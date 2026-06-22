@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TETRIS x ACTION - GRID TOWER21</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    background: #222222;
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+// ============================================================
+// Block Data
+// ============================================================
+const BLOCKS = [
+  { shape_id:1,  name:"square",   shape:[[0,0],[1,0],[0,1],[1,1]],                   color:"#ffee00", outline:"#bbaa00" },
+  { shape_id:2,  name:"I4",       shape:[[0,0],[0,1],[0,2],[0,3]],                   color:"#00eeff", outline:"#0099bb" },
+  { shape_id:3,  name:"I3",       shape:[[0,0],[0,1],[0,2]],                         color:"#55bbff", outline:"#2277bb" },
+  { shape_id:4,  name:"I2",       shape:[[0,0],[0,1]],                               color:"#aaddff", outline:"#6699bb" },
+  { shape_id:5,  name:"one",      shape:[[0,0]],                                     color:"#ffffff", outline:"#aaaaaa" },
+  { shape_id:6,  name:"T",        shape:[[0,0],[1,0],[2,0],[1,1]],                   color:"#cc44ff", outline:"#881199" },
+  { shape_id:7,  name:"L",        shape:[[0,0],[0,1],[0,2],[1,2]],                   color:"#ff8800", outline:"#bb5500" },
+  { shape_id:8,  name:"J",        shape:[[1,0],[1,1],[0,2],[1,2]],                   color:"#4488ff", outline:"#2255bb" },
+  { shape_id:9,  name:"S",        shape:[[1,0],[2,0],[0,1],[1,1]],                   color:"#44ff66", outline:"#229944" },
+  { shape_id:10, name:"Z",        shape:[[0,0],[1,0],[1,1],[2,1]],                   color:"#ff3333", outline:"#bb1111" },
+  { shape_id:11, name:"stairs",   shape:[[1,0],[0,1],[1,1]],                         color:"#ff00ff", outline:"#aa00aa" },
+  { shape_id:12, name:"concave",  shape:[[0,0],[2,0],[0,1],[1,1],[2,1]],             color:"#ff9955", outline:"#cc6622" },
+  { shape_id:13, name:"T_inv",    shape:[[0,0],[1,0],[2,0],[1,1],[1,2]],             color:"#ff6699", outline:"#bb2255" },
+  { shape_id:14, name:"cross",    shape:[[1,0],[0,1],[1,1],[2,1],[1,2]],             color:"#ffcc00", outline:"#bb8800" },
+  { shape_id:15, name:"battan",   shape:[[0,0],[2,0],[1,1],[0,2],[2,2]],             color:"#00ffcc", outline:"#00aa88" },
+  { shape_id:16, name:"H",        shape:[[0,0],[2,0],[0,1],[2,1]],                   color:"#ff44aa", outline:"#bb1177" },
+  { shape_id:17, name:"O_frame",  shape:[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[1,2],[2,2]], color:"#ffdd44", outline:"#bb9900" },
+];
+
+const RARE_BLOCK_IDS = [12,13,14,15,16,17];
+
+const BLOCK_COLOR_MAP = {
+  1:  { fill:"#887700", outline:"#554400" },
+  2:  { fill:"#007788", outline:"#004455" },
+  3:  { fill:"#225588", outline:"#113355" },
+  4:  { fill:"#556677", outline:"#334455" },
+  5:  { fill:"#777777", outline:"#444444" },
+  6:  { fill:"#662288", outline:"#440055" },
+  7:  { fill:"#884400", outline:"#552200" },
+  8:  { fill:"#224488", outline:"#112255" },
+  9:  { fill:"#226633", outline:"#114422" },
+  10: { fill:"#881111", outline:"#550000" },
+  11: { fill:"#880088", outline:"#550055" },
+  12: { fill:"#884422", outline:"#552211" },
+  13: { fill:"#883344", outline:"#551122" },
+  14: { fill:"#886600", outline:"#554400" },
+  15: { fill:"#007755", outline:"#004433" },
+  16: { fill:"#882255", outline:"#551133" },
+  17: { fill:"#886611", outline:"#554400" },
+};
+
+// ============================================================
+// Constants
+// ============================================================
+const SCREEN_WIDTH  = 1920;
+const SCREEN_HEIGHT = 1080;
+const GAME_LEFT   = 640;
+const GAME_RIGHT  = 1280;
+const GAME_TOP    = 40;
+const GAME_BOTTOM = 1040;
+const GRID_SIZE   = 40;
+const MAP_WIDTH   = 16;
+const MAP_HEIGHT  = 25;
+
+const GRAVITY    = 0.8;
+const JUMP_SPEED = -14.0;
+const MOVE_SPEED = 4;
+const PUSH_DELAY = 15;
+const P_HALF_W   = 15;
+const P_HALF_H   = 30;
+
+const BLOCK_FALL_INTERVAL      = 20;
+const BLOCK_FALL_INTERVAL_FAST = 2;
+const SCORE_PER_LINE           = 100;
+const LINES_PER_FLOOR          = 3;
+
+const MAX_HP            = 5;
+const INVINCIBLE_FRAMES = 180;
+
+const BEAM_CYCLE       = 600;
+const BEAM_WARNING     = 120;
+const BEAM_WIDTH_COLS  = 3;
+const BEAM_SHOW_FRAMES = 90;
+
+// ============================================================
+// Canvas Setup with scaling
+// ============================================================
+const canvas = document.getElementById("gameCanvas");
+const ctx    = canvas.getContext("2d");
+
+function resizeCanvas() {
+  const scaleX = window.innerWidth  / SCREEN_WIDTH;
+  const scaleY = window.innerHeight / SCREEN_HEIGHT;
+  const scale  = Math.min(scaleX, scaleY);
+  canvas.width  = SCREEN_WIDTH;
+  canvas.height = SCREEN_HEIGHT;
+  canvas.style.width  = (SCREEN_WIDTH  * scale) + "px";
+  canvas.style.height = (SCREEN_HEIGHT * scale) + "px";
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+// ============================================================
+// Game Classes
+// ============================================================
+class FallingBlock {
+  constructor() {
+    this.x        = 0;
+    this.y        = 0;
+    this.timer    = 0;
+    this.shape_id = 1;
+    this.shape    = [];
+    this.color    = "yellow";
+    this.outline  = "orange";
+    this._pickRandom(null);
+  }
+
+  _pickRandom(state) {
+    let data;
+    if (state && RARE_BLOCK_IDS.length > 0 && state.block_count % 15 === 0 && state.block_count > 0) {
+      const rareId = RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)];
+      data = BLOCKS.find(b => b.shape_id === rareId);
+    } else {
+      const normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+      data = normal[Math.floor(Math.random() * normal.length)];
+    }
+    this.shape_id = data.shape_id;
+    this.shape    = data.shape.map(c => [...c]);
+    this.color    = data.color;
+    this.outline  = data.outline;
+    const maxDx   = Math.max(...this.shape.map(([dx]) => dx));
+    this.x        = 1 + Math.floor(Math.random() * (MAP_WIDTH - maxDx - 2));
+    this.y        = 0;
+    this.timer    = 0;
+  }
+
+  spawn(state) {
+    state.block_count += 1;
+    this._pickRandom(state);
+  }
+
+  getCells() {
+    return this.shape.map(([dx, dy]) => [this.x + dx, this.y + dy]);
+  }
+
+  rotateLeft(state) {
+    let ns = this._rotate(this.shape, -1);
+    ns = this._normalize(ns);
+    if (!this._collides(state, ns)) this.shape = ns;
+  }
+
+  rotateRight(state) {
+    let ns = this._rotate(this.shape, 1);
+    ns = this._normalize(ns);
+    if (!this._collides(state, ns)) this.shape = ns;
+  }
+
+  _rotate(shape, dir) {
+    if (dir === 1) return shape.map(([dx, dy]) => [-dy, dx]);
+    else           return shape.map(([dx, dy]) => [dy, -dx]);
+  }
+
+  _normalize(shape) {
+    const minX = Math.min(...shape.map(([dx]) => dx));
+    const minY = Math.min(...shape.map(([, dy]) => dy));
+    return shape.map(([dx, dy]) => [dx - minX, dy - minY]);
+  }
+
+  _collides(state, shape) {
+    for (const [dx, dy] of shape) {
+      const tx = this.x + dx, ty = this.y + dy;
+      if (tx < 0 || tx >= MAP_WIDTH) return true;
+      if (ty >= MAP_HEIGHT) return true;
+      if (ty >= 0 && ty < MAP_HEIGHT && state.block_map[ty][tx] >= 1) return true;
+    }
+    return false;
+  }
+}
+
+class Player {
+  constructor() {
+    this.x              = (GAME_LEFT + GAME_RIGHT) / 2;
+    this.y              = GAME_BOTTOM - 20;
+    this.vx             = 0;
+    this.vy             = 0;
+    this.is_grounded   = false;
+    this.push_timer_l  = 0;
+    this.push_timer_r  = 0;
+    this.hp            = MAX_HP;
+    this.invincible    = 0;
+    this.blink_visible = true;
+  }
+}
+
+class BeamState {
+  constructor() {
+    this.timer      = 0;
+    this.col        = 0;
+    this.show_timer = 0;
+    this.phase      = "wait";
+    this.blink_on   = true;
+  }
+}
+
+class GameState {
+  constructor() {
+    this.block_map   = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.next_serial = 1;
+    this.block_count = 0;
+    this.key_states  = { w:false, a:false, s:false, d:false, space:false };
+    this.last_hkey   = "";
+    this.score       = 0;
+    this.floor       = 1;
+    this.floor_lines = 0;
+  }
+}
+
+// ============================================================
+// Game Logic
+// ============================================================
+function checkCollision(state, fb, nx, ny) {
+  for (const [dx, dy] of fb.shape) {
+    const tx = nx + dx, ty = ny + dy;
+    if (tx < 0 || tx >= MAP_WIDTH) return true;
+    if (ty >= MAP_HEIGHT) return true;
+    if (ty >= 0 && ty < MAP_HEIGHT && state.block_map[ty][tx] >= 1) return true;
+  }
+  return false;
+}
+
+function lockBlock(state, fb) {
+  const mapValue = fb.shape_id * 1000 + state.next_serial;
+  for (const [gx, gy] of fb.getCells()) {
+    if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT) {
+      state.block_map[gy][gx] = mapValue;
+    }
+  }
+  state.next_serial += 1;
+}
+
+function checkLineClear(state) {
+  let y = MAP_HEIGHT - 1;
+  while (y >= 0) {
+    if (!state.block_map[y].includes(0)) {
+      for (let ty = y; ty > 0; ty--) {
+        state.block_map[ty] = [...state.block_map[ty - 1]];
+      }
+      state.block_map[0] = new Array(MAP_WIDTH).fill(0);
+      state.score       += SCORE_PER_LINE;
+      state.floor_lines += 1;
+      if (state.floor_lines >= LINES_PER_FLOOR) {
+        state.floor += 1;
+        state.floor_lines = 0;
+      }
+    } else {
+      y -= 1;
+    }
+  }
+}
+
+function applyGravityToBlocks(state) {
+  const activeIds = new Set();
+  for (let y = 0; y < MAP_HEIGHT; y++)
+    for (let x = 0; x < MAP_WIDTH; x++)
+      if (state.block_map[y][x] >= 1) activeIds.add(state.block_map[y][x]);
+
+  const sortedIds = [...activeIds].sort((a, b) => a - b);
+  for (const blockId of sortedIds) {
+    const cells = [];
+    for (let y = 0; y < MAP_HEIGHT; y++)
+      for (let x = 0; x < MAP_WIDTH; x++)
+        if (state.block_map[y][x] === blockId) cells.push([x, y]);
+
+    let canDrop = true;
+    for (const [cx, cy] of cells) {
+      const ny = cy + 1;
+      if (ny >= MAP_HEIGHT) { canDrop = false; break; }
+      if (state.block_map[ny][cx] >= 1 && state.block_map[ny][cx] !== blockId) { canDrop = false; break; }
+    }
+    if (canDrop && cells.length > 0) {
+      const sorted = cells.slice().sort((a, b) => b[1] - a[1]);
+      for (const [cx, cy] of sorted) {
+        state.block_map[cy + 1][cx] = blockId;
+        state.block_map[cy][cx]     = 0;
+      }
+    }
+  }
+}
+
+function isSolidMap(state, gx, gy) {
+  if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
+  return state.block_map[gy][gx] >= 1;
+}
+
+function isSolidAll(state, fb, gx, gy) {
+  if (isSolidMap(state, gx, gy)) return true;
+  for (const [fx, fy] of fb.getCells()) {
+    if (fx === gx && fy === gy) return true;
+  }
+  return false;
+}
+
+function teleportPlayer(player) {
+  player.x          = (GAME_LEFT + GAME_RIGHT) / 2;
+  player.y          = GAME_TOP + 100;
+  player.vy         = 0;
+  player.is_grounded = false;
+}
+
+function checkCrush(state, fb, player) {
+  if (player.invincible > 0) return;
+  if (!player.is_grounded) return;
+
+  const head_gy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const lx      = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rx      = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const fbCells = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+
+  for (const cx of [lx, rx]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    const isBlockAbove =
+      fbCells.has(`${cx},${head_gy}`) ||
+      (head_gy >= 0 && head_gy < MAP_HEIGHT && state.block_map[head_gy][cx] >= 1);
+    if (isBlockAbove) {
+      player.hp         = Math.max(0, player.hp - 1);
+      player.invincible = INVINCIBLE_FRAMES;
+      teleportPlayer(player);
+      break;
+    }
+  }
+}
+
+function updateBeam(beam, player) {
+  beam.timer += 1;
+
+  if (beam.phase === "wait" && beam.timer >= BEAM_CYCLE - BEAM_WARNING) {
+    beam.phase   = "warning";
+    const p_gx   = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+    beam.col     = p_gx - Math.floor(BEAM_WIDTH_COLS / 2);
+    beam.col     = Math.max(0, Math.min(MAP_WIDTH - BEAM_WIDTH_COLS, beam.col));
+  }
+
+  if (beam.phase === "warning") {
+    beam.blink_on = (Math.floor(beam.timer / 8) % 2 === 0);
+  }
+
+  if (beam.phase === "warning" && beam.timer >= BEAM_CYCLE) {
+    beam.phase      = "firing";
+    beam.show_timer = BEAM_SHOW_FRAMES;
+    beam.timer      = 0;
+  }
+
+  if (beam.phase === "firing") {
+    beam.show_timer -= 1;
+    if (player.invincible === 0) {
+      const p_gx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+      if (beam.col <= p_gx && p_gx < beam.col + BEAM_WIDTH_COLS) {
+        player.hp         = Math.max(0, player.hp - 1);
+        player.invincible = INVINCIBLE_FRAMES;
+        teleportPlayer(player);
+      }
+    }
+    if (beam.show_timer <= 0) beam.phase = "wait";
+  }
+}
+
+// ============================================================
+// Update
+// ============================================================
+function updateFallingBlock(state, fb) {
+  const interval = state.key_states.s ? BLOCK_FALL_INTERVAL_FAST : BLOCK_FALL_INTERVAL;
+  fb.timer += 1;
+  if (fb.timer < interval) return;
+  fb.timer = 0;
+  if (!checkCollision(state, fb, fb.x, fb.y + 1)) {
+    fb.y += 1;
+  } else {
+    lockBlock(state, fb);
+    fb.spawn(state);
+  }
+  checkLineClear(state);
+  applyGravityToBlocks(state);
+}
+
+function updatePlayer(state, fb, player) {
+  const ks = state.key_states;
+
+  player.vx = 0;
+  if (ks.a && ks.d) {
+    if (state.last_hkey === "a")      player.vx = -MOVE_SPEED;
+    else if (state.last_hkey === "d") player.vx =  MOVE_SPEED;
+  } else if (ks.a) { player.vx = -MOVE_SPEED; }
+  else if (ks.d)   { player.vx =  MOVE_SPEED; }
+
+  const upper_y = Math.floor((player.y - (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const lower_y = Math.floor((player.y + (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const next_lx = Math.floor((player.x + player.vx - (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  const next_rx = Math.floor((player.x + player.vx + (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+
+  let hittingBlock = false;
+
+  outer: for (const grid_y of [upper_y, lower_y]) {
+    if (grid_y < 0 || grid_y >= MAP_HEIGHT) continue;
+
+    if (player.vx < 0 && next_lx >= 0 && next_lx < MAP_WIDTH && state.block_map[grid_y][next_lx] >= 1) {
+      hittingBlock = true;
+      const targetId = state.block_map[grid_y][next_lx];
+      const cells = [];
+      for (let y = 0; y < MAP_HEIGHT; y++)
+        for (let x = 0; x < MAP_WIDTH; x++)
+          if (state.block_map[y][x] === targetId) cells.push([x, y]);
+
+      const canPush = cells.every(([cx, cy]) =>
+        cx - 1 >= 0 && (state.block_map[cy][cx - 1] === 0 || state.block_map[cy][cx - 1] === targetId));
+
+      player.push_timer_r = 0;
+      if (canPush) {
+        player.push_timer_l += 1;
+        if (player.push_timer_l >= PUSH_DELAY) {
+          const sorted = cells.slice().sort((a, b) => a[0] - b[0]);
+          for (const [cx, cy] of sorted) {
+            state.block_map[cy][cx - 1] = targetId;
+            state.block_map[cy][cx]     = 0;
+          }
+          player.push_timer_l = 0;
+        } else { player.vx = 0; }
+      } else { player.vx = 0; }
+      break outer;
+    }
+
+    if (player.vx > 0 && next_rx >= 0 && next_rx < MAP_WIDTH && state.block_map[grid_y][next_rx] >= 1) {
+      hittingBlock = true;
+      const targetId = state.block_map[grid_y][next_rx];
+      const cells = [];
+      for (let y = 0; y < MAP_HEIGHT; y++)
+        for (let x = 0; x < MAP_WIDTH; x++)
+          if (state.block_map[y][x] === targetId) cells.push([x, y]);
+
+      const canPush = cells.every(([cx, cy]) =>
+        cx + 1 < MAP_WIDTH && (state.block_map[cy][cx + 1] === 0 || state.block_map[cy][cx + 1] === targetId));
+
+      player.push_timer_l = 0;
+      if (canPush) {
+        player.push_timer_r += 1;
+        if (player.push_timer_r >= PUSH_DELAY) {
+          const sorted = cells.slice().sort((a, b) => b[0] - a[0]);
+          for (const [cx, cy] of sorted) {
+            state.block_map[cy][cx + 1] = targetId;
+            state.block_map[cy][cx]     = 0;
+          }
+          player.push_timer_r = 0;
+        } else { player.vx = 0; }
+      } else { player.vx = 0; }
+      break outer;
+    }
+  }
+
+  player.x += player.vx;
+  if (!hittingBlock) { player.push_timer_l = 0; player.push_timer_r = 0; }
+  player.x = Math.max(GAME_LEFT + P_HALF_W, Math.min(GAME_RIGHT - P_HALF_W, player.x));
+
+  if (!player.is_grounded) {
+    player.vy += GRAVITY;
+  } else {
+    player.vy = 0;
+    if (ks.w || ks.space) {
+      player.vy          = JUMP_SPEED;
+      player.is_grounded = false;
+    }
+  }
+
+  player.y          += player.vy;
+  player.is_grounded = false;
+
+  const lfoot_x = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rfoot_x = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const head_gy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const foot_gy = Math.floor((player.y + P_HALF_H - GAME_TOP) / GRID_SIZE);
+
+  for (const cx of [lfoot_x, rfoot_x]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    if (player.vy >= 0 && foot_gy >= 0 && foot_gy < MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, foot_gy)) {
+        player.y           = foot_gy * GRID_SIZE + GAME_TOP - P_HALF_H;
+        player.is_grounded = true;
+        break;
+      }
+    }
+    if (player.vy < 0 && head_gy >= 0 && head_gy < MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, head_gy)) {
+        player.y  = (head_gy + 1) * GRID_SIZE + GAME_TOP + P_HALF_H;
+        player.vy = 0;
+        break;
+      }
+    }
+  }
+
+  if (player.y > GAME_BOTTOM - P_HALF_H) {
+    player.y           = GAME_BOTTOM - P_HALF_H;
+    player.is_grounded = true;
+  }
+
+  if (player.invincible > 0) {
+    player.invincible   -= 1;
+    player.blink_visible = (Math.floor(player.invincible / 6) % 2 === 0);
+  } else {
+    player.blink_visible = true;
+  }
+}
+
+// ============================================================
+// Drawing
+// ============================================================
+function drawFrame(ctx, state, fb, player, beam) {
+  ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+  ctx.fillStyle = "#222222";
+  ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  // Layout borders
+  // Main game area (white)
+  ctx.strokeStyle = "white";
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
+
+  // Left panel (cyan): x=40, y=GAME_TOP, right_x=GAME_LEFT-40=600
+  ctx.strokeStyle = "cyan";
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(40, GAME_TOP, GAME_LEFT - 40 - 40, GAME_BOTTOM - GAME_TOP);
+
+  // Right panel (yellow): x=GAME_RIGHT+40, right_x=SCREEN_WIDTH-40=1880
+  ctx.strokeStyle = "yellow";
+  ctx.lineWidth   = 2;
+  ctx.strokeRect(GAME_RIGHT + 40, GAME_TOP, SCREEN_WIDTH - 40 - (GAME_RIGHT + 40), GAME_BOTTOM - GAME_TOP);
+
+  // Grid lines
+  ctx.strokeStyle = "#333333";
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([8, 10]);
+  for (let gx = 0; gx <= MAP_WIDTH; gx++) {
+    const x = GAME_LEFT + gx * GRID_SIZE;
+    ctx.beginPath(); ctx.moveTo(x, GAME_TOP); ctx.lineTo(x, GAME_BOTTOM); ctx.stroke();
+  }
+  for (let gy = 0; gy <= MAP_HEIGHT; gy++) {
+    const y = GAME_TOP + gy * GRID_SIZE;
+    ctx.beginPath(); ctx.moveTo(GAME_LEFT, y); ctx.lineTo(GAME_RIGHT, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Beam warning
+  if (beam.phase === "warning" && beam.blink_on) {
+    const x0 = GAME_LEFT + beam.col * GRID_SIZE;
+    const x1 = GAME_LEFT + (beam.col + BEAM_WIDTH_COLS) * GRID_SIZE;
+    ctx.fillStyle = "#550000";
+    ctx.fillRect(x0, GAME_TOP, x1 - x0, GAME_BOTTOM - GAME_TOP);
+  }
+
+  // Beam firing
+  if (beam.phase === "firing") {
+    const x0 = GAME_LEFT + beam.col * GRID_SIZE;
+    const x1 = GAME_LEFT + (beam.col + BEAM_WIDTH_COLS) * GRID_SIZE;
+    ctx.fillStyle = "#ff2200";
+    ctx.fillRect(x0, GAME_TOP, x1 - x0, GAME_BOTTOM - GAME_TOP);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(x0 + 4, GAME_TOP, (x1 - x0) - 8, GAME_BOTTOM - GAME_TOP);
+  }
+
+  // Locked blocks
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      const val = state.block_map[y][x];
+      if (val >= 1) {
+        const shape_id = Math.floor(val / 1000);
+        const col = BLOCK_COLOR_MAP[shape_id] || { fill:"#666666", outline:"#444444" };
+        ctx.fillStyle   = col.fill;
+        ctx.strokeStyle = col.outline;
+        ctx.lineWidth   = 1;
+        ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      }
+    }
+  }
+
+  // Falling block
+  for (const [gx, gy] of fb.getCells()) {
+    ctx.fillStyle   = fb.color;
+    ctx.strokeStyle = fb.outline;
+    ctx.lineWidth   = 1;
+    ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+    ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+  }
+
+  // Player
+  if (player.blink_visible) {
+    ctx.fillStyle   = player.invincible > 0 ? "#ffaaaa" : "lightgreen";
+    ctx.strokeStyle = "white";
+    ctx.lineWidth   = 1;
+    ctx.fillRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+    ctx.strokeRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+  }
+
+  // Beam warning text
+  if (beam.phase === "warning") {
+    const remainSec = Math.max(0, (BEAM_CYCLE - beam.timer) / 60).toFixed(1);
+    const cx = (GAME_LEFT + GAME_RIGHT) / 2;
+    ctx.fillStyle   = "#111111";
+    ctx.strokeStyle = "#ff3333";
+    ctx.lineWidth   = 2;
+    ctx.fillRect(cx - 300, GAME_TOP + 20, 600, 90);
+    ctx.strokeRect(cx - 300, GAME_TOP + 20, 600, 90);
+    ctx.fillStyle  = "#ff3333";
+    ctx.font       = "bold 16px Arial";
+    ctx.textAlign  = "center";
+    ctx.fillText(`\u26a0 WARNING: BEAM INBOUND (${remainSec}s) \u26a0`, cx, GAME_TOP + 65);
+  }
+
+  // ── Left panel: Score & Controls ──
+  // status_center_x: Python では (40 + GAME_LEFT - 40) // 2 = (640) // 2 = 320
+  const statusCenterX = Math.floor((40 + GAME_LEFT - 40) / 2); // = 320
+
+  // SCORE
+  ctx.fillStyle = "white";
+  ctx.font      = "bold 42px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("SCORE", statusCenterX, GAME_TOP + 90);
+  ctx.font = "bold 52px Arial";
+  ctx.fillText(state.score, statusCenterX, GAME_TOP + 165);
+
+  // Controls
+  ctx.fillStyle = "#ffffff";
+  ctx.font      = "bold 24px Arial";
+  ctx.fillText("CONTROLS", statusCenterX, GAME_TOP + 270);
+
+  ctx.fillStyle = "#aaaaaa";
+  ctx.font      = "bold 20px Arial";
+  const controls = [
+    "[A] / [D] : \u2190 / \u2192",
+    "[W] / [Space] : \u2191 (Jump)",
+    "[S] : Speed Up Block",
+    "",
+    "[Left Click] : Rotate Left",
+    "[Right Click] : Rotate Right",
+    "Shift + Click : Move Block",
+    "[Esc] : Exit Game",
+  ];
+  controls.forEach((line, i) => {
+    ctx.fillText(line, statusCenterX, GAME_TOP + 320 + i * 38);
+  });
+
+  // HP
+  const hp_y = GAME_BOTTOM - 130;
+  ctx.fillStyle = "cyan";
+  ctx.font      = "bold 28px Arial";
+  ctx.textAlign = "center";
+  ctx.fillText("PLAYER HEALTH", statusCenterX, hp_y - 50);
+
+  for (let i = 0; i < MAX_HP; i++) {
+    const startX = statusCenterX - ((MAX_HP - 1) * 35);
+    ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444";
+    ctx.font      = "bold 48px Arial";
+    ctx.fillText("\u2665", startX + i * 70, hp_y);
+  }
+
+  // ── Right panel: Ascent Map ──
+  // map_left_x = GAME_RIGHT + 80 = 1360
+  // map_right_x = SCREEN_WIDTH - 40 = 1880  (Python: SCREEN_WIDTH - 40)
+  const map_left_x   = GAME_RIGHT + 80;
+  const map_right_x  = SCREEN_WIDTH - 40;
+  const map_center_x = Math.floor((map_left_x + map_right_x) / 2);
+
+  const base_y    = 900;
+  const floor_gap = 160;
+  const start_f   = Math.max(1, state.floor - 1);
+  const end_f     = start_f + 5;
+
+  for (let f = start_f; f <= end_f; f++) {
+    const fy = base_y - (f - start_f) * floor_gap;
+    if (fy < GAME_TOP + 80) continue;
+
+    const isCurrentFloor = (f === state.floor);
+
+    // Floor line: Python → map_left_x+80 to map_right_x-100
+    ctx.strokeStyle = isCurrentFloor ? "yellow" : "#444444";
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(map_left_x + 80, fy);
+    ctx.lineTo(map_right_x - 100, fy);
+    ctx.stroke();
+
+    // Floor label: Python → map_left_x+30, textAlign="left"
+    ctx.fillStyle = isCurrentFloor ? "yellow" : "gray";
+    ctx.font      = "bold 24px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText(`${f} F`, map_left_x + 30, fy + 12);
+
+    if (isCurrentFloor) {
+      const progressOffset = (state.floor_lines / LINES_PER_FLOOR) * floor_gap;
+      const indicatorY     = fy - Math.floor(progressOffset);
+
+      // "◆ NOW" indicator
+      ctx.fillStyle  = "#ff3333";
+      ctx.font       = "bold 16px Arial";
+      ctx.textAlign  = "right";
+      ctx.fillText("\u25c6 NOW", map_right_x - 40, indicatorY + 8);
+
+      // Ascent progress text
+      ctx.fillStyle  = "lightgreen";
+      ctx.font       = "italic 12px Arial";
+      ctx.textAlign  = "center";
+      ctx.fillText(
+        `ASCENT PROGRESS: ${state.floor_lines} / ${LINES_PER_FLOOR} LINES`,
+        map_center_x, fy + 30
+      );
+    }
+  }
+
+  // Reset textAlign
+  ctx.textAlign = "left";
+
+  // Game Over overlay
+  if (player.hp <= 0) {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    ctx.fillStyle = "#ff3333";
+    ctx.font      = "bold 80px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("GAME OVER", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 60);
+    ctx.fillStyle = "white";
+    ctx.font      = "bold 32px Arial";
+    ctx.fillText(`Final Score: ${state.score}  |  Floor: ${state.floor}`, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 20);
+    ctx.fillStyle = "#aaaaaa";
+    ctx.font      = "bold 24px Arial";
+    ctx.fillText("Press [R] to Restart", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 80);
+  }
+}
+
+// ============================================================
+// Input
+// ============================================================
+let gameOver = false;
+
+document.addEventListener("keydown", (e) => {
+  if (gameOver && e.key.toLowerCase() === "r") {
+    restartGame();
+    return;
+  }
+  const sym = e.key.toLowerCase();
+  if (sym in state.key_states) state.key_states[sym] = true;
+  if (e.code === "Space")      state.key_states.space = true;
+  if (sym === "a" || sym === "d") state.last_hkey = sym;
+  if (e.code === "Space" || sym === "s" || sym === "w") e.preventDefault();
+});
+
+document.addEventListener("keyup", (e) => {
+  const sym = e.key.toLowerCase();
+  if (sym in state.key_states) state.key_states[sym] = false;
+  if (e.code === "Space")      state.key_states.space = false;
+});
+
+canvas.addEventListener("click", (e) => {
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = SCREEN_WIDTH  / rect.width;
+  const scaleY = SCREEN_HEIGHT / rect.height;
+  const cx     = (e.clientX - rect.left) * scaleX;
+  const cy     = (e.clientY - rect.top)  * scaleY;
+  if (!(GAME_LEFT <= cx && cx <= GAME_RIGHT && GAME_TOP <= cy && cy <= GAME_BOTTOM)) return;
+  const gx = Math.floor((cx - GAME_LEFT) / GRID_SIZE);
+  const gy = Math.floor((cy - GAME_TOP)  / GRID_SIZE);
+  const cells = fb.getCells();
+  const hit = cells.some(([fx, fy]) => fx === gx && fy === gy);
+  if (!hit) return;
+  if (e.shiftKey) {
+    if (!checkCollision(state, fb, fb.x - 1, fb.y)) fb.x -= 1;
+  } else {
+    fb.rotateLeft(state);
+  }
+});
+
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  const rect   = canvas.getBoundingClientRect();
+  const scaleX = SCREEN_WIDTH  / rect.width;
+  const scaleY = SCREEN_HEIGHT / rect.height;
+  const cx     = (e.clientX - rect.left) * scaleX;
+  const cy     = (e.clientY - rect.top)  * scaleY;
+  if (!(GAME_LEFT <= cx && cx <= GAME_RIGHT && GAME_TOP <= cy && cy <= GAME_BOTTOM)) return;
+  const gx = Math.floor((cx - GAME_LEFT) / GRID_SIZE);
+  const gy = Math.floor((cy - GAME_TOP)  / GRID_SIZE);
+  const cells = fb.getCells();
+  const hit = cells.some(([fx, fy]) => fx === gx && fy === gy);
+  if (!hit) return;
+  if (e.shiftKey) {
+    if (!checkCollision(state, fb, fb.x + 1, fb.y)) fb.x += 1;
+  } else {
+    fb.rotateRight(state);
+  }
+});
+
+// ============================================================
+// Game Loop
+// ============================================================
+let state, fb, player, beam;
+
+function initGame() {
+  state    = new GameState();
+  fb       = new FallingBlock();
+  player   = new Player();
+  beam     = new BeamState();
+  gameOver = false;
+}
+
+function restartGame() {
+  initGame();
+}
+
+// setIntervalで更新・描画を完全60Hz固定
+// モニターのリフレッシュレートに関係なく常に同じ速度で動作する
+let loopInterval = null;
+
+function mainLoop() {
+  if (!gameOver) {
+    updateFallingBlock(state, fb);
+    updatePlayer(state, fb, player);
+    checkCrush(state, fb, player);
+    updateBeam(beam, player);
+    if (player.hp <= 0) gameOver = true;
+  }
+  drawFrame(ctx, state, fb, player, beam);
+}
+
+initGame();
+loopInterval = setInterval(mainLoop, 1000 / 60);
+</script>
+</body>
+</html>
