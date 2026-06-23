@@ -18,7 +18,6 @@
   }
   canvas {
     display: block;
-    /* Scale the 1920×1080 canvas to fit the viewport */
     max-width: 100vw;
     max-height: 100vh;
   }
@@ -103,6 +102,16 @@ const BEAM_SHOW_FRAMES = 90;
 
 const BLOCK_MOVE_INITIAL_DELAY = 12;
 const BLOCK_MOVE_REPEAT_DELAY  = 4;
+
+// ============================================================
+// 60 Hz 固定タイムステップ設定
+// ============================================================
+const TARGET_FPS      = 60;
+const FIXED_DELTA_MS  = 1000 / TARGET_FPS;   // ≒ 16.6667 ms
+const MAX_ACCUMULATOR = FIXED_DELTA_MS * 5;   // 遅延が大きくなりすぎたときの上限（スパイク対策）
+
+let _lastTimestamp  = null;   // 前フレームのタイムスタンプ (ms)
+let _accumulator    = 0;      // 未処理時間の蓄積 (ms)
 
 // ============================================================
 // Canvas setup & scaling
@@ -530,11 +539,9 @@ function multilineText(lines,x,startY,fill,font,lineHeight,align="center"){
 // 描画：ゲーム画面
 // ============================================================
 function drawGame() {
-  // Background
   ctx.fillStyle="#111122";
   ctx.fillRect(0,0,SW,SH);
 
-  // Static layout borders
   ctx.strokeStyle="white"; ctx.lineWidth=2;
   ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT-GAME_LEFT, GAME_BOTTOM-GAME_TOP);
   ctx.strokeStyle="cyan"; ctx.lineWidth=1;
@@ -542,7 +549,6 @@ function drawGame() {
   ctx.strokeStyle="yellow"; ctx.lineWidth=2;
   ctx.strokeRect(GAME_RIGHT+40, GAME_TOP, SW-80-(GAME_RIGHT+40), GAME_BOTTOM-GAME_TOP);
 
-  // Grid lines
   ctx.strokeStyle="#333333"; ctx.lineWidth=1;
   ctx.setLineDash([8,10]);
   for (let gx=0;gx<=MAP_WIDTH;gx++){
@@ -555,20 +561,17 @@ function drawGame() {
   }
   ctx.setLineDash([]);
 
-  // Beam warning
   if (beam.phase==="warning" && beam.blink_on){
     const x0=GAME_LEFT+beam.col*GRID_SIZE, x1=GAME_LEFT+(beam.col+BEAM_WIDTH)*GRID_SIZE;
     ctx.fillStyle="#550000";
     ctx.fillRect(x0,GAME_TOP,x1-x0,GAME_BOTTOM-GAME_TOP);
   }
-  // Beam firing
   if (beam.phase==="firing"){
     const x0=GAME_LEFT+beam.col*GRID_SIZE, x1=GAME_LEFT+(beam.col+BEAM_WIDTH)*GRID_SIZE;
     ctx.fillStyle="#ff2200"; ctx.fillRect(x0,GAME_TOP,x1-x0,GAME_BOTTOM-GAME_TOP);
     ctx.fillStyle="#ffffff"; ctx.fillRect(x0+4,GAME_TOP,x1-x0-8,GAME_BOTTOM-GAME_TOP);
   }
 
-  // Locked blocks
   for (let y=0;y<MAP_HEIGHT;y++){
     for (let x=0;x<MAP_WIDTH;x++){
       const val=state.block_map[y][x];
@@ -581,20 +584,17 @@ function drawGame() {
     }
   }
 
-  // Falling block
   for (const [gx,gy] of fb.getCells()){
     fillRect(GAME_LEFT+gx*GRID_SIZE, GAME_TOP+gy*GRID_SIZE,
              GRID_SIZE, GRID_SIZE, fb.color, fb.outline);
   }
 
-  // Player
   if (player.blink_visible){
     const fill = player.invincible>0?"#ffaaaa":"lightgreen";
     fillRect(player.x-P_HALF_W, player.y-P_HALF_H,
              P_HALF_W*2, P_HALF_H*2, fill, "white");
   }
 
-  // Beam warning text
   if (beam.phase==="warning"){
     const remain=(Math.max(0,BEAM_CYCLE-beam.timer)/60).toFixed(1);
     const cx=(GAME_LEFT+GAME_RIGHT)/2;
@@ -602,7 +602,6 @@ function drawGame() {
     drawText(`⚠WARNING: BEAM INBOUND (${remain}s) ⚠`,cx,GAME_TOP+65,"#ff3333","bold 16px Arial");
   }
 
-  // Left panel: SCORE + controls
   const cx_left=(40+GAME_LEFT-40)/2;
   drawText("SCORE",cx_left,GAME_TOP+60,"white","bold 28px Arial");
   drawText(String(state.score),cx_left,GAME_TOP+120,"white","bold 28px Arial");
@@ -625,7 +624,6 @@ function drawGame() {
   ctx.textAlign="center"; ctx.textBaseline="middle";
   controls.forEach((l,i)=>ctx.fillText(l,cx_left,GAME_TOP+220+i*22));
 
-  // HP display
   const hp_y=GAME_BOTTOM-120;
   drawText("PLAYER HEALTH",cx_left,hp_y-40,"cyan","bold 16px Arial");
   for (let i=0;i<MAX_HP;i++){
@@ -634,7 +632,6 @@ function drawGame() {
     drawText("♥",sx+i*50,hp_y,col,"bold 45px Arial");
   }
 
-  // Right panel: floor map
   const map_left_x=GAME_RIGHT+80, map_right_x=SW-80;
   const map_center_x=(map_left_x+map_right_x)/2;
   const base_y=900, floor_gap=160;
@@ -694,7 +691,6 @@ function drawTitle() {
 // 描画：ポーズ
 // ============================================================
 function drawPause() {
-  // Semi-transparent overlay
   ctx.fillStyle="rgba(0,0,0,0.55)";
   ctx.fillRect(0,0,SW,SH);
 
@@ -756,7 +752,6 @@ function hitTest(rects, cx, cy){
   return null;
 }
 
-// Convert mouse/touch coords to canvas coords
 function toCanvasCoords(e){
   const rect=canvas.getBoundingClientRect();
   const scaleX=SW/rect.width, scaleY=SH/rect.height;
@@ -766,25 +761,52 @@ function toCanvasCoords(e){
 }
 
 // ============================================================
-// メインループ
+// ゲームロジック 1ステップ分をまとめた関数
 // ============================================================
-function mainLoop() {
-  if (scene==="title"){
+function updateGame() {
+  updateBlockMove(state, fb, bms);
+  updateFallingBlock(state, fb);
+  updatePlayer(state, fb, player);
+  checkCrush(state, fb, player);
+  updateBeam(beam, player);
+}
+
+// ============================================================
+// メインループ（60Hz 固定タイムステップ）
+// ============================================================
+function mainLoop(timestamp) {
+  // 初回呼び出し時の初期化
+  if (_lastTimestamp === null) {
+    _lastTimestamp = timestamp;
+  }
+
+  // 経過時間を蓄積（スパイク対策で上限クランプ）
+  const elapsed = timestamp - _lastTimestamp;
+  _lastTimestamp = timestamp;
+  _accumulator = Math.min(_accumulator + elapsed, MAX_ACCUMULATOR);
+
+  // 蓄積時間が 1 ステップ分を超えるたびにロジックを進める
+  while (_accumulator >= FIXED_DELTA_MS) {
+    if (scene === "game") {
+      updateGame();
+      // updateGame 内で scene が変わった場合はループを抜ける
+      if (scene !== "game") break;
+    }
+    _accumulator -= FIXED_DELTA_MS;
+  }
+
+  // 描画は毎フレーム 1 回だけ
+  if (scene === "title") {
     drawTitle();
-  } else if (scene==="game"){
-    updateBlockMove(state,fb,bms);
-    updateFallingBlock(state,fb);
-    updatePlayer(state,fb,player);
-    checkCrush(state,fb,player);
-    updateBeam(beam,player);
-    if (scene==="game") drawGame();
-    if (scene==="gameover") drawGameover();
-  } else if (scene==="pause"){
+  } else if (scene === "game") {
+    drawGame();
+  } else if (scene === "pause") {
     drawGame();
     drawPause();
-  } else if (scene==="gameover"){
+  } else if (scene === "gameover") {
     drawGameover();
   }
+
   requestAnimationFrame(mainLoop);
 }
 
@@ -804,7 +826,6 @@ document.addEventListener("keydown", e => {
   }
   if (scene==="gameover") return;
 
-  // game
   if (sym==="escape"){ scene="pause"; return; }
 
   if (["w","a","s","d","space"].includes(sym)) {
@@ -832,7 +853,6 @@ document.addEventListener("keyup", e => {
   if (sym==="right"){bms.right_held=false;bms.hold_frames=0;bms.repeat_acc=0;}
 });
 
-// Mouse clicks
 canvas.addEventListener("mousedown", e => {
   e.preventDefault();
   const [cx,cy]=toCanvasCoords(e);
@@ -859,10 +879,8 @@ canvas.addEventListener("mousedown", e => {
     return;
   }
 
-  // game: left vs right click for block move
   if (scene==="game"){
     if (e.button===0){
-      // left click = move block left
       if(!bms.left_held){bms.left_held=true;bms.hold_frames=0;bms.repeat_acc=0;}
       bms.right_held=false;
     } else if (e.button===2){
@@ -880,7 +898,6 @@ canvas.addEventListener("mouseup", e => {
 
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-// Touch support (simple: tap on left/right half for block movement)
 canvas.addEventListener("touchstart", e => {
   e.preventDefault();
   const [cx,cy]=toCanvasCoords(e);
