@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRID TOWER ～目指せ100F～</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #111122;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Arial', sans-serif;
+  }
+  canvas {
+    display: block;
+    /* Scale the 1920×1080 canvas to fit the viewport */
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+// ============================================================
+// block_data (inline)
+// ============================================================
+const BLOCKS = [
+  { shape_id:  1, name:"square",   shape:[[0,0],[1,0],[0,1],[1,1]],                                   color:"#ffee00", outline:"#bbaa00" },
+  { shape_id:  2, name:"I4",       shape:[[0,0],[0,1],[0,2],[0,3]],                                   color:"#00eeff", outline:"#0099bb" },
+  { shape_id:  3, name:"I3",       shape:[[0,0],[0,1],[0,2]],                                         color:"#55bbff", outline:"#2277bb" },
+  { shape_id:  4, name:"I2",       shape:[[0,0],[0,1]],                                               color:"#aaddff", outline:"#6699bb" },
+  { shape_id:  5, name:"one",      shape:[[0,0]],                                                     color:"#ffffff", outline:"#aaaaaa" },
+  { shape_id:  6, name:"T",        shape:[[0,0],[1,0],[2,0],[1,1]],                                   color:"#cc44ff", outline:"#881199" },
+  { shape_id:  7, name:"L",        shape:[[0,0],[0,1],[0,2],[1,2]],                                   color:"#ff8800", outline:"#bb5500" },
+  { shape_id:  8, name:"J",        shape:[[1,0],[1,1],[0,2],[1,2]],                                   color:"#4488ff", outline:"#2255bb" },
+  { shape_id:  9, name:"S",        shape:[[1,0],[2,0],[0,1],[1,1]],                                   color:"#44ff66", outline:"#229944" },
+  { shape_id: 10, name:"Z",        shape:[[0,0],[1,0],[1,1],[2,1]],                                   color:"#ff3333", outline:"#bb1111" },
+  { shape_id: 11, name:"stairs",   shape:[[1,0],[0,1],[1,1]],                                         color:"#ff00ff", outline:"#aa00aa" },
+  { shape_id: 12, name:"concave",  shape:[[0,0],[2,0],[0,1],[1,1],[2,1]],                             color:"#ff9955", outline:"#cc6622" },
+  { shape_id: 13, name:"T_inv",    shape:[[0,0],[1,0],[2,0],[1,1],[1,2]],                             color:"#ff6699", outline:"#bb2255" },
+  { shape_id: 14, name:"cross",    shape:[[1,0],[0,1],[1,1],[2,1],[1,2]],                             color:"#ffcc00", outline:"#bb8800" },
+  { shape_id: 15, name:"battan",   shape:[[0,0],[2,0],[1,1],[0,2],[2,2]],                             color:"#00ffcc", outline:"#00aa88" },
+  { shape_id: 16, name:"H",        shape:[[0,0],[2,0],[0,1],[2,1]],                                   color:"#ff44aa", outline:"#bb1177" },
+  { shape_id: 17, name:"O_frame",  shape:[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[1,2],[2,2]],           color:"#ffdd44", outline:"#bb9900" },
+];
+
+const RARE_BLOCK_IDS = [12, 13, 14, 15, 16, 17];
+
+const BLOCK_COLOR_MAP = {
+   1: { fill:"#887700", outline:"#554400" },
+   2: { fill:"#007788", outline:"#004455" },
+   3: { fill:"#225588", outline:"#113355" },
+   4: { fill:"#556677", outline:"#334455" },
+   5: { fill:"#777777", outline:"#444444" },
+   6: { fill:"#662288", outline:"#440055" },
+   7: { fill:"#884400", outline:"#552200" },
+   8: { fill:"#224488", outline:"#112255" },
+   9: { fill:"#226633", outline:"#114422" },
+  10: { fill:"#881111", outline:"#550000" },
+  11: { fill:"#880088", outline:"#550055" },
+  12: { fill:"#884422", outline:"#552211" },
+  13: { fill:"#883344", outline:"#551122" },
+  14: { fill:"#886600", outline:"#554400" },
+  15: { fill:"#007755", outline:"#004433" },
+  16: { fill:"#882255", outline:"#551133" },
+  17: { fill:"#886611", outline:"#554400" },
+};
+
+// ============================================================
+// 定数
+// ============================================================
+const SW = 1920, SH = 1080;
+const GAME_LEFT   = 640,  GAME_RIGHT  = 1280;
+const GAME_TOP    = 40,   GAME_BOTTOM = 1040;
+const GRID_SIZE   = 40;
+const MAP_WIDTH   = 16,   MAP_HEIGHT  = 25;
+
+const GRAVITY    = 0.8;
+const JUMP_SPEED = -14.0;
+const MOVE_SPEED = 4;
+
+const PUSH_DELAY = 15;
+const P_HALF_W   = 15, P_HALF_H = 30;
+
+const BLOCK_FALL_INTERVAL      = 20;
+const BLOCK_FALL_INTERVAL_FAST = 2;
+const SCORE_PER_LINE           = 100;
+const LINES_PER_FLOOR          = 1;
+
+const MAX_HP            = 5;
+const INVINCIBLE_FRAMES = 180;
+
+const BEAM_CYCLE       = 1800;
+const BEAM_WARNING     = 120;
+const BEAM_WIDTH       = 3;
+const BEAM_SHOW_FRAMES = 90;
+
+const BLOCK_MOVE_INITIAL_DELAY = 12;
+const BLOCK_MOVE_REPEAT_DELAY  = 4;
+
+// ============================================================
+// Canvas setup & scaling
+// ============================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+canvas.width  = SW;
+canvas.height = SH;
+
+function fitCanvas() {
+  const scaleX = window.innerWidth  / SW;
+  const scaleY = window.innerHeight / SH;
+  const scale  = Math.min(scaleX, scaleY);
+  canvas.style.width  = (SW * scale) + 'px';
+  canvas.style.height = (SH * scale) + 'px';
+}
+fitCanvas();
+window.addEventListener('resize', fitCanvas);
+
+// ============================================================
+// ゲーム状態
+// ============================================================
+let scene = "title";  // "title" | "game" | "pause" | "gameover"
+
+function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+// ---- FallingBlock ----
+class FallingBlock {
+  constructor() {
+    this.x = 0; this.y = 0; this.timer = 0;
+    this.shape_id = 1; this.shape = []; this.color = "yellow"; this.outline = "orange";
+    const normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+    const data   = normal[Math.floor(Math.random() * normal.length)];
+    this._applyData(data);
+  }
+  _applyData(data) {
+    this.shape_id = data.shape_id;
+    this.shape    = data.shape.map(c => [...c]);
+    this.color    = data.color;
+    this.outline  = data.outline;
+    const max_dx  = Math.max(...this.shape.map(([dx]) => dx));
+    this.x        = randInt(1, MAP_WIDTH - max_dx - 2);
+    this.y        = 0;
+    this.timer    = 0;
+  }
+  spawn(state) {
+    state.block_count++;
+    state.rare_countdown--;
+    let data;
+    if (RARE_BLOCK_IDS.length && state.rare_countdown <= 0) {
+      const rare_id = RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)];
+      data = BLOCKS.find(b => b.shape_id === rare_id);
+      state.rare_countdown = randInt(28, 32);
+    } else {
+      const normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+      data = normal[Math.floor(Math.random() * normal.length)];
+    }
+    this._applyData(data);
+  }
+  getCells() { return this.shape.map(([dx, dy]) => [this.x + dx, this.y + dy]); }
+
+  rotateLeft(state)  { this._tryRotate(state, -1); }
+  rotateRight(state) { this._tryRotate(state,  1); }
+  _tryRotate(state, dir) {
+    let ns = this.shape.map(([dx, dy]) => dir === 1 ? [-dy, dx] : [dy, -dx]);
+    const minX = Math.min(...ns.map(([x]) => x));
+    const minY = Math.min(...ns.map(([, y]) => y));
+    ns = ns.map(([x, y]) => [x - minX, y - minY]);
+    if (!this._collides(state, ns)) this.shape = ns;
+  }
+  _collides(state, shape) {
+    for (const [dx, dy] of shape) {
+      const tx = this.x + dx, ty = this.y + dy;
+      if (tx < 0 || tx >= MAP_WIDTH) return true;
+      if (ty >= MAP_HEIGHT) return true;
+      if (ty >= 0 && ty < MAP_HEIGHT && state.block_map[ty][tx] >= 1) return true;
+    }
+    return false;
+  }
+}
+
+// ---- Player ----
+class Player {
+  constructor() {
+    this.x = (GAME_LEFT + GAME_RIGHT) / 2;
+    this.y = GAME_BOTTOM - 20;
+    this.vx = 0; this.vy = 0;
+    this.is_grounded = false;
+    this.push_timer_l = 0; this.push_timer_r = 0;
+    this.hp = MAX_HP;
+    this.invincible = 0;
+    this.blink_visible = true;
+  }
+}
+
+// ---- BeamState ----
+class BeamState {
+  constructor() {
+    this.timer = 0; this.col = 0; this.show_timer = 0;
+    this.phase = "wait"; this.blink_on = true;
+  }
+}
+
+// ---- BlockMoveState ----
+class BlockMoveState {
+  constructor() {
+    this.left_held = false; this.right_held = false;
+    this.hold_frames = 0; this.repeat_acc = 0;
+  }
+}
+
+// ---- GameState ----
+class GameState {
+  constructor() {
+    this.block_map   = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.next_serial = 1;
+    this.block_count = 0;
+    this.rare_countdown = randInt(28, 32);
+    this.key_states = { w:false, a:false, s:false, d:false, space:false };
+    this.last_hkey  = "";
+    this.score = 0; this.floor = 1; this.floor_lines = 0;
+  }
+}
+
+let state, fb, player, beam, bms;
+
+function resetGame() {
+  state  = new GameState();
+  fb     = new FallingBlock();
+  player = new Player();
+  beam   = new BeamState();
+  bms    = new BlockMoveState();
+}
+resetGame();
+
+// ============================================================
+// ゲームロジック
+// ============================================================
+function checkCollision(state, fb, nx, ny) {
+  for (const [dx, dy] of fb.shape) {
+    const tx = nx + dx, ty = ny + dy;
+    if (tx < 0 || tx >= MAP_WIDTH) return true;
+    if (ty >= MAP_HEIGHT) return true;
+    if (ty >= 0 && ty < MAP_HEIGHT && state.block_map[ty][tx] >= 1) return true;
+  }
+  return false;
+}
+
+function lockBlock(state, fb) {
+  const map_value = fb.shape_id * 1000 + state.next_serial;
+  for (const [gx, gy] of fb.getCells()) {
+    if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT)
+      state.block_map[gy][gx] = map_value;
+  }
+  state.next_serial++;
+}
+
+function checkLineClear(state) {
+  let y = MAP_HEIGHT - 1;
+  while (y >= 0) {
+    if (!state.block_map[y].includes(0)) {
+      for (let ty = y; ty > 0; ty--)
+        state.block_map[ty] = [...state.block_map[ty - 1]];
+      state.block_map[0] = new Array(MAP_WIDTH).fill(0);
+      state.score      += SCORE_PER_LINE;
+      state.floor_lines++;
+      if (state.floor_lines >= LINES_PER_FLOOR) {
+        state.floor++;
+        state.floor_lines = 0;
+      }
+    } else { y--; }
+  }
+}
+
+function applyGravityToBlocks(state) {
+  const activeIds = new Set();
+  for (let y = 0; y < MAP_HEIGHT; y++)
+    for (let x = 0; x < MAP_WIDTH; x++)
+      if (state.block_map[y][x] >= 1) activeIds.add(state.block_map[y][x]);
+
+  for (const bid of [...activeIds].sort((a,b)=>a-b)) {
+    const cells = [];
+    for (let y = 0; y < MAP_HEIGHT; y++)
+      for (let x = 0; x < MAP_WIDTH; x++)
+        if (state.block_map[y][x] === bid) cells.push([x, y]);
+
+    let can_drop = true;
+    for (const [cx, cy] of cells) {
+      if (cy + 1 >= MAP_HEIGHT) { can_drop = false; break; }
+      if (state.block_map[cy+1][cx] >= 1 && state.block_map[cy+1][cx] !== bid) { can_drop = false; break; }
+    }
+    if (can_drop && cells.length) {
+      for (const [cx, cy] of cells.slice().sort((a,b) => b[1]-a[1])) {
+        state.block_map[cy+1][cx] = bid;
+        state.block_map[cy][cx]   = 0;
+      }
+    }
+  }
+}
+
+function isSolidMap(state, gx, gy) {
+  if (gx<0||gx>=MAP_WIDTH||gy<0||gy>=MAP_HEIGHT) return false;
+  return state.block_map[gy][gx] >= 1;
+}
+
+function isSolidAll(state, fb, gx, gy) {
+  if (isSolidMap(state, gx, gy)) return true;
+  for (const [fx, fy] of fb.getCells())
+    if (fx===gx && fy===gy) return true;
+  return false;
+}
+
+function teleportPlayer(player) {
+  player.x = (GAME_LEFT + GAME_RIGHT) / 2;
+  player.y = GAME_TOP + 100;
+  player.vy = 0;
+  player.is_grounded = false;
+}
+
+function checkCrush(state, fb, player) {
+  if (player.invincible > 0) return;
+  if (!player.is_grounded) return;
+  const head_gy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const lx      = Math.floor((player.x - (P_HALF_W-2) - GAME_LEFT) / GRID_SIZE);
+  const rx      = Math.floor((player.x + (P_HALF_W-2) - GAME_LEFT) / GRID_SIZE);
+  const fb_cells = new Set(fb.getCells().map(([a,b])=>`${a},${b}`));
+  for (const cx of [lx, rx]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    const above = fb_cells.has(`${cx},${head_gy}`) ||
+                  (head_gy>=0 && head_gy<MAP_HEIGHT && state.block_map[head_gy][cx] >= 1);
+    if (above) {
+      player.hp = Math.max(0, player.hp - 1);
+      player.invincible = INVINCIBLE_FRAMES;
+      if (player.hp <= 0) { scene = "gameover"; }
+      else { teleportPlayer(player); }
+      break;
+    }
+  }
+}
+
+function updateBeam(beam, player) {
+  beam.timer++;
+  if (beam.phase==="wait" && beam.timer >= BEAM_CYCLE - BEAM_WARNING) {
+    beam.phase = "warning";
+    const p_gx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+    beam.col = Math.max(0, Math.min(MAP_WIDTH - BEAM_WIDTH, p_gx - Math.floor(BEAM_WIDTH/2)));
+  }
+  if (beam.phase==="warning") beam.blink_on = (Math.floor(beam.timer/8) % 2 === 0);
+  if (beam.phase==="warning" && beam.timer >= BEAM_CYCLE) {
+    beam.phase = "firing";
+    beam.show_timer = BEAM_SHOW_FRAMES;
+    beam.timer = 0;
+  }
+  if (beam.phase==="firing") {
+    beam.show_timer--;
+    if (player.invincible === 0) {
+      const p_gx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+      if (beam.col <= p_gx && p_gx < beam.col + BEAM_WIDTH) {
+        player.hp = Math.max(0, player.hp - 1);
+        player.invincible = INVINCIBLE_FRAMES;
+        if (player.hp <= 0) { scene = "gameover"; }
+        else { teleportPlayer(player); }
+      }
+    }
+    if (beam.show_timer <= 0) beam.phase = "wait";
+  }
+}
+
+function updateBlockMove(state, fb, bms) {
+  if (bms.left_held && bms.right_held)  { bms.hold_frames=0; bms.repeat_acc=0; return; }
+  if (!bms.left_held && !bms.right_held){ bms.hold_frames=0; bms.repeat_acc=0; return; }
+  const dir = bms.left_held ? -1 : 1;
+  if (bms.hold_frames === 0) {
+    if (!checkCollision(state, fb, fb.x+dir, fb.y)) fb.x += dir;
+    bms.repeat_acc = 0;
+  } else if (bms.hold_frames >= BLOCK_MOVE_INITIAL_DELAY) {
+    bms.repeat_acc++;
+    if (bms.repeat_acc >= BLOCK_MOVE_REPEAT_DELAY) {
+      bms.repeat_acc = 0;
+      if (!checkCollision(state, fb, fb.x+dir, fb.y)) fb.x += dir;
+    }
+  }
+  bms.hold_frames++;
+}
+
+function updateFallingBlock(state, fb) {
+  const interval = state.key_states["s"] ? BLOCK_FALL_INTERVAL_FAST : BLOCK_FALL_INTERVAL;
+  fb.timer++;
+  if (fb.timer < interval) return;
+  fb.timer = 0;
+  if (!checkCollision(state, fb, fb.x, fb.y+1)) {
+    fb.y++;
+  } else {
+    lockBlock(state, fb);
+    fb.spawn(state);
+  }
+  checkLineClear(state);
+  applyGravityToBlocks(state);
+}
+
+function updatePlayer(state, fb, player) {
+  const ks = state.key_states;
+  player.vx = 0;
+  if (ks["a"] && ks["d"]) {
+    if (state.last_hkey==="a") player.vx = -MOVE_SPEED;
+    else if (state.last_hkey==="d") player.vx = MOVE_SPEED;
+  } else if (ks["a"]) { player.vx = -MOVE_SPEED; }
+    else if (ks["d"]) { player.vx =  MOVE_SPEED; }
+
+  const upper_y = Math.floor((player.y - (P_HALF_H-1) - GAME_TOP) / GRID_SIZE);
+  const lower_y = Math.floor((player.y + (P_HALF_H-1) - GAME_TOP) / GRID_SIZE);
+  const next_lx = Math.floor((player.x + player.vx - (P_HALF_W-1) - GAME_LEFT) / GRID_SIZE);
+  const next_rx = Math.floor((player.x + player.vx + (P_HALF_W-1) - GAME_LEFT) / GRID_SIZE);
+
+  let hitting_block = false;
+  outer:
+  for (const grid_y of [upper_y, lower_y]) {
+    if (grid_y < 0 || grid_y >= MAP_HEIGHT) continue;
+    if (player.vx < 0 && next_lx>=0 && next_lx<MAP_WIDTH && state.block_map[grid_y][next_lx]>=1) {
+      hitting_block = true;
+      const target_id = state.block_map[grid_y][next_lx];
+      const cells = [];
+      for (let y=0;y<MAP_HEIGHT;y++) for(let x=0;x<MAP_WIDTH;x++)
+        if (state.block_map[y][x]===target_id) cells.push([x,y]);
+      const can_push = cells.every(([cx,cy]) =>
+        cx-1>=0 && (state.block_map[cy][cx-1]===0 || state.block_map[cy][cx-1]===target_id));
+      player.push_timer_r = 0;
+      if (can_push) {
+        player.push_timer_l++;
+        if (player.push_timer_l >= PUSH_DELAY) {
+          cells.sort((a,b)=>a[0]-b[0]).forEach(([cx,cy])=>{
+            state.block_map[cy][cx-1]=target_id; state.block_map[cy][cx]=0;
+          });
+          player.push_timer_l = 0;
+        } else player.vx = 0;
+      } else player.vx = 0;
+      break outer;
+    }
+    if (player.vx > 0 && next_rx>=0 && next_rx<MAP_WIDTH && state.block_map[grid_y][next_rx]>=1) {
+      hitting_block = true;
+      const target_id = state.block_map[grid_y][next_rx];
+      const cells = [];
+      for (let y=0;y<MAP_HEIGHT;y++) for(let x=0;x<MAP_WIDTH;x++)
+        if (state.block_map[y][x]===target_id) cells.push([x,y]);
+      const can_push = cells.every(([cx,cy]) =>
+        cx+1<MAP_WIDTH && (state.block_map[cy][cx+1]===0 || state.block_map[cy][cx+1]===target_id));
+      player.push_timer_l = 0;
+      if (can_push) {
+        player.push_timer_r++;
+        if (player.push_timer_r >= PUSH_DELAY) {
+          cells.sort((a,b)=>b[0]-a[0]).forEach(([cx,cy])=>{
+            state.block_map[cy][cx+1]=target_id; state.block_map[cy][cx]=0;
+          });
+          player.push_timer_r = 0;
+        } else player.vx = 0;
+      } else player.vx = 0;
+      break outer;
+    }
+  }
+
+  player.x += player.vx;
+  if (!hitting_block) { player.push_timer_l=0; player.push_timer_r=0; }
+  player.x = Math.max(GAME_LEFT+P_HALF_W, Math.min(GAME_RIGHT-P_HALF_W, player.x));
+
+  if (!player.is_grounded) { player.vy += GRAVITY; }
+  else {
+    player.vy = 0;
+    if (ks["w"]) { player.vy = JUMP_SPEED; player.is_grounded = false; }
+  }
+  player.y += player.vy;
+  player.is_grounded = false;
+
+  const lfoot_x = Math.floor((player.x-(P_HALF_W-2)-GAME_LEFT)/GRID_SIZE);
+  const rfoot_x = Math.floor((player.x+(P_HALF_W-2)-GAME_LEFT)/GRID_SIZE);
+  const head_gy = Math.floor((player.y-P_HALF_H-GAME_TOP)/GRID_SIZE);
+  const foot_gy = Math.floor((player.y+P_HALF_H-GAME_TOP)/GRID_SIZE);
+
+  outer2:
+  for (const cx of [lfoot_x, rfoot_x]) {
+    if (cx<0||cx>=MAP_WIDTH) continue;
+    if (player.vy>=0 && foot_gy>=0 && foot_gy<MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, foot_gy)) {
+        player.y = foot_gy*GRID_SIZE + GAME_TOP - P_HALF_H;
+        player.is_grounded = true;
+        break outer2;
+      }
+    }
+    if (player.vy<0 && head_gy>=0 && head_gy<MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, head_gy)) {
+        player.y = (head_gy+1)*GRID_SIZE + GAME_TOP + P_HALF_H;
+        player.vy = 0;
+        break outer2;
+      }
+    }
+  }
+
+  if (player.y > GAME_BOTTOM - P_HALF_H) {
+    player.y = GAME_BOTTOM - P_HALF_H;
+    player.is_grounded = true;
+  }
+
+  if (player.invincible > 0) {
+    player.invincible--;
+    player.blink_visible = (Math.floor(player.invincible/6) % 2 === 0);
+  } else { player.blink_visible = true; }
+}
+
+// ============================================================
+// 描画ヘルパー
+// ============================================================
+function fillRect(x,y,w,h,fill,stroke,lw=1){
+  ctx.fillStyle=fill; ctx.fillRect(x,y,w,h);
+  if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=lw;ctx.strokeRect(x,y,w,h);}
+}
+function drawText(text,x,y,fill,font,align="center",baseline="middle"){
+  ctx.fillStyle=fill; ctx.font=font; ctx.textAlign=align; ctx.textBaseline=baseline;
+  ctx.fillText(text,x,y);
+}
+function multilineText(lines,x,startY,fill,font,lineHeight,align="center"){
+  ctx.fillStyle=fill; ctx.font=font; ctx.textAlign=align; ctx.textBaseline="middle";
+  lines.forEach((l,i)=>ctx.fillText(l,x,startY+i*lineHeight));
+}
+
+// ============================================================
+// 描画：ゲーム画面
+// ============================================================
+function drawGame() {
+  // Background
+  ctx.fillStyle="#111122";
+  ctx.fillRect(0,0,SW,SH);
+
+  // Static layout borders
+  ctx.strokeStyle="white"; ctx.lineWidth=2;
+  ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT-GAME_LEFT, GAME_BOTTOM-GAME_TOP);
+  ctx.strokeStyle="cyan"; ctx.lineWidth=1;
+  ctx.strokeRect(40, GAME_TOP, GAME_LEFT-80, GAME_BOTTOM-GAME_TOP);
+  ctx.strokeStyle="yellow"; ctx.lineWidth=2;
+  ctx.strokeRect(GAME_RIGHT+40, GAME_TOP, SW-80-(GAME_RIGHT+40), GAME_BOTTOM-GAME_TOP);
+
+  // Grid lines
+  ctx.strokeStyle="#333333"; ctx.lineWidth=1;
+  ctx.setLineDash([8,10]);
+  for (let gx=0;gx<=MAP_WIDTH;gx++){
+    const x=GAME_LEFT+gx*GRID_SIZE;
+    ctx.beginPath();ctx.moveTo(x,GAME_TOP);ctx.lineTo(x,GAME_BOTTOM);ctx.stroke();
+  }
+  for (let gy=0;gy<=MAP_HEIGHT;gy++){
+    const y=GAME_TOP+gy*GRID_SIZE;
+    ctx.beginPath();ctx.moveTo(GAME_LEFT,y);ctx.lineTo(GAME_RIGHT,y);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Beam warning
+  if (beam.phase==="warning" && beam.blink_on){
+    const x0=GAME_LEFT+beam.col*GRID_SIZE, x1=GAME_LEFT+(beam.col+BEAM_WIDTH)*GRID_SIZE;
+    ctx.fillStyle="#550000";
+    ctx.fillRect(x0,GAME_TOP,x1-x0,GAME_BOTTOM-GAME_TOP);
+  }
+  // Beam firing
+  if (beam.phase==="firing"){
+    const x0=GAME_LEFT+beam.col*GRID_SIZE, x1=GAME_LEFT+(beam.col+BEAM_WIDTH)*GRID_SIZE;
+    ctx.fillStyle="#ff2200"; ctx.fillRect(x0,GAME_TOP,x1-x0,GAME_BOTTOM-GAME_TOP);
+    ctx.fillStyle="#ffffff"; ctx.fillRect(x0+4,GAME_TOP,x1-x0-8,GAME_BOTTOM-GAME_TOP);
+  }
+
+  // Locked blocks
+  for (let y=0;y<MAP_HEIGHT;y++){
+    for (let x=0;x<MAP_WIDTH;x++){
+      const val=state.block_map[y][x];
+      if (val>=1){
+        const sid=Math.floor(val/1000);
+        const col=BLOCK_COLOR_MAP[sid]||{fill:"gray",outline:"#444"};
+        fillRect(GAME_LEFT+x*GRID_SIZE, GAME_TOP+y*GRID_SIZE,
+                 GRID_SIZE, GRID_SIZE, col.fill, col.outline);
+      }
+    }
+  }
+
+  // Falling block
+  for (const [gx,gy] of fb.getCells()){
+    fillRect(GAME_LEFT+gx*GRID_SIZE, GAME_TOP+gy*GRID_SIZE,
+             GRID_SIZE, GRID_SIZE, fb.color, fb.outline);
+  }
+
+  // Player
+  if (player.blink_visible){
+    const fill = player.invincible>0?"#ffaaaa":"lightgreen";
+    fillRect(player.x-P_HALF_W, player.y-P_HALF_H,
+             P_HALF_W*2, P_HALF_H*2, fill, "white");
+  }
+
+  // Beam warning text
+  if (beam.phase==="warning"){
+    const remain=(Math.max(0,BEAM_CYCLE-beam.timer)/60).toFixed(1);
+    const cx=(GAME_LEFT+GAME_RIGHT)/2;
+    fillRect(cx-300,GAME_TOP+20,600,90,"#111111","#ff3333",2);
+    drawText(`⚠WARNING: BEAM INBOUND (${remain}s) ⚠`,cx,GAME_TOP+65,"#ff3333","bold 16px Arial");
+  }
+
+  // Left panel: SCORE + controls
+  const cx_left=(40+GAME_LEFT-40)/2;
+  drawText("SCORE",cx_left,GAME_TOP+60,"white","bold 28px Arial");
+  drawText(String(state.score),cx_left,GAME_TOP+120,"white","bold 28px Arial");
+
+  const controls=[
+    "CONTROLS","",
+    "＜ プレイヤー操作 ＞",
+    "[A] / [D] : ← / →",
+    "[W] : ジャンプ","",
+    "＜ ブロック操作 ＞",
+    "[S] : ブロック落下速度上昇","",
+    "[←] / [→] : ブロック左右移動",
+    "[左クリック] : ブロック左へ",
+    "[右クリック] : ブロック右へ",
+    "（長押しで連続移動）",
+    "[Space] : ブロック回転",
+    "[Esc] : ポーズ"
+  ];
+  ctx.fillStyle="#aaaaaa"; ctx.font="bold 14px Arial";
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  controls.forEach((l,i)=>ctx.fillText(l,cx_left,GAME_TOP+220+i*22));
+
+  // HP display
+  const hp_y=GAME_BOTTOM-120;
+  drawText("PLAYER HEALTH",cx_left,hp_y-40,"cyan","bold 16px Arial");
+  for (let i=0;i<MAX_HP;i++){
+    const sx=cx_left-((MAX_HP-1)*25);
+    const col=i<player.hp?"#ff3333":"#444444";
+    drawText("♥",sx+i*50,hp_y,col,"bold 45px Arial");
+  }
+
+  // Right panel: floor map
+  const map_left_x=GAME_RIGHT+80, map_right_x=SW-80;
+  const map_center_x=(map_left_x+map_right_x)/2;
+  const base_y=900, floor_gap=160;
+  const start_f=Math.max(1,state.floor-1);
+  const end_f=start_f+5;
+  for (let f=start_f;f<=end_f;f++){
+    const fy=base_y-(f-start_f)*floor_gap;
+    if (fy<GAME_TOP+80) continue;
+    const line_col=f===state.floor?"yellow":"#444444";
+    const text_col=f===state.floor?"yellow":"gray";
+    ctx.strokeStyle=line_col; ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(map_left_x+80,fy);ctx.lineTo(map_right_x-100,fy);ctx.stroke();
+    drawText(`${f} F`,map_left_x+30,fy,text_col,"bold 24px Arial");
+    if (f===state.floor){
+      const progress_offset=(state.floor_lines/LINES_PER_FLOOR)*floor_gap;
+      const cur_y=fy-Math.floor(progress_offset);
+      drawText("◆ NOW",map_right_x-40,cur_y,"#ff3333","bold 16px Arial");
+      drawText(`ASCENT: ${state.floor_lines}/${LINES_PER_FLOOR} LINES`,map_center_x,fy+30,"lightgreen","italic 12px Arial");
+    }
+  }
+}
+
+// ============================================================
+// 描画：タイトル画面
+// ============================================================
+function drawTitle() {
+  ctx.fillStyle="#111122"; ctx.fillRect(0,0,SW,SH);
+  const cx=SW/2;
+
+  ctx.strokeStyle="#334455"; ctx.lineWidth=2;
+  ctx.strokeRect(cx-480,60,960,SH-120);
+
+  drawText("GRID TOWER",cx,200,"#00eeff","bold 72px Arial");
+  drawText("～目指せ100F～",cx,290,"#aaaacc","24px Arial");
+
+  const buttons=[
+    {label:"PLAY",      bg:"#22aa55",fg:"#ffffff",id:"btn_play"},
+    {label:"HARD MODE", bg:"#aa3322",fg:"#ffffff",id:"btn_hard"},
+    {label:"TUTORIAL",  bg:"#225588",fg:"#ffffff",id:"btn_tutorial"},
+    {label:"QUIT GAME", bg:"#444444",fg:"#aaaaaa",id:"btn_quit"},
+  ];
+  const btn_w=400,btn_h=70,gap=30;
+  const total_h=4*btn_h+3*gap;
+  const start_y=(SH-total_h)/2+80;
+  titleBtnRects=[];
+  buttons.forEach((b,i)=>{
+    const y0=start_y+i*(btn_h+gap);
+    fillRect(cx-btn_w/2,y0,btn_w,btn_h,b.bg,"#ffffff",1);
+    drawText(b.label,cx,y0+btn_h/2,b.fg,"bold 28px Arial");
+    titleBtnRects.push({id:b.id,x:cx-btn_w/2,y:y0,w:btn_w,h:btn_h});
+  });
+
+  drawText("© 2026  TETRIS x ACTION",cx,SH-80,"#445566","14px Arial");
+}
+
+// ============================================================
+// 描画：ポーズ
+// ============================================================
+function drawPause() {
+  // Semi-transparent overlay
+  ctx.fillStyle="rgba(0,0,0,0.55)";
+  ctx.fillRect(0,0,SW,SH);
+
+  const cx=SW/2;
+  const pw=500,ph=520;
+  const px0=cx-pw/2, py0=SH/2-ph/2;
+  fillRect(px0,py0,pw,ph,"#1a1a2e","#00eeff",3);
+  drawText("PAUSE",cx,py0+70,"#00eeff","bold 48px Arial");
+
+  const buttons=[
+    {label:"RESUME",    bg:"#22aa55",fg:"#ffffff",id:"btn_resume"},
+    {label:"RETRY",     bg:"#cc8800",fg:"#ffffff",id:"btn_retry_pause"},
+    {label:"HOME",      bg:"#225588",fg:"#ffffff",id:"btn_home_pause"},
+    {label:"QUIT GAME", bg:"#553333",fg:"#ffaaaa",id:"btn_quit_pause"},
+  ];
+  const btn_w=360,btn_h=65,gap=20;
+  const start_y=py0+160;
+  pauseBtnRects=[];
+  buttons.forEach((b,i)=>{
+    const y0=start_y+i*(btn_h+gap);
+    fillRect(cx-btn_w/2,y0,btn_w,btn_h,b.bg,"#ffffff",1);
+    drawText(b.label,cx,y0+btn_h/2,b.fg,"bold 24px Arial");
+    pauseBtnRects.push({id:b.id,x:cx-btn_w/2,y:y0,w:btn_w,h:btn_h});
+  });
+}
+
+// ============================================================
+// 描画：ゲームオーバー
+// ============================================================
+function drawGameover() {
+  ctx.fillStyle="#0d0000"; ctx.fillRect(0,0,SW,SH);
+  const cx=SW/2;
+  drawText("GAME OVER",cx,SH/2-260,"#ff2200","bold 80px Arial");
+  drawText(`SCORE  :  ${state.score}`,cx,SH/2-140,"#ffffff","bold 36px Arial");
+  drawText(`FLOOR REACHED  :  ${state.floor} F`,cx,SH/2-80,"#aaaaaa","28px Arial");
+
+  const buttons=[
+    {label:"RETRY",     bg:"#cc4400",fg:"#ffffff",id:"btn_retry_go"},
+    {label:"HOME",      bg:"#225588",fg:"#ffffff",id:"btn_home_go"},
+    {label:"QUIT GAME", bg:"#333333",fg:"#aaaaaa",id:"btn_quit_go"},
+  ];
+  const btn_w=400,btn_h=70,gap=24;
+  const start_y=SH/2+20;
+  gameoverBtnRects=[];
+  buttons.forEach((b,i)=>{
+    const y0=start_y+i*(btn_h+gap);
+    fillRect(cx-btn_w/2,y0,btn_w,btn_h,b.bg,"#ffffff",1);
+    drawText(b.label,cx,y0+btn_h/2,b.fg,"bold 28px Arial");
+    gameoverBtnRects.push({id:b.id,x:cx-btn_w/2,y:y0,w:btn_w,h:btn_h});
+  });
+}
+
+// Button rect storage (rebuilt each draw)
+let titleBtnRects=[], pauseBtnRects=[], gameoverBtnRects=[];
+
+function hitTest(rects, cx, cy){
+  for(const r of rects)
+    if(cx>=r.x&&cx<=r.x+r.w&&cy>=r.y&&cy<=r.y+r.h) return r.id;
+  return null;
+}
+
+// Convert mouse/touch coords to canvas coords
+function toCanvasCoords(e){
+  const rect=canvas.getBoundingClientRect();
+  const scaleX=SW/rect.width, scaleY=SH/rect.height;
+  const clientX=e.touches?e.touches[0].clientX:e.clientX;
+  const clientY=e.touches?e.touches[0].clientY:e.clientY;
+  return [(clientX-rect.left)*scaleX, (clientY-rect.top)*scaleY];
+}
+
+// ============================================================
+// メインループ
+// ============================================================
+function mainLoop() {
+  if (scene==="title"){
+    drawTitle();
+  } else if (scene==="game"){
+    updateBlockMove(state,fb,bms);
+    updateFallingBlock(state,fb);
+    updatePlayer(state,fb,player);
+    checkCrush(state,fb,player);
+    updateBeam(beam,player);
+    if (scene==="game") drawGame();
+    if (scene==="gameover") drawGameover();
+  } else if (scene==="pause"){
+    drawGame();
+    drawPause();
+  } else if (scene==="gameover"){
+    drawGameover();
+  }
+  requestAnimationFrame(mainLoop);
+}
+
+// ============================================================
+// 入力ハンドラ
+// ============================================================
+const keyMap = { w:"w",a:"a",s:"s",d:"d"," ":"space",ArrowLeft:"left",ArrowRight:"right",ArrowUp:"w",ArrowDown:"s" };
+
+document.addEventListener("keydown", e => {
+  const sym = e.key==="Escape"?"escape": (keyMap[e.key]||e.key.toLowerCase());
+
+  if (scene==="title") return;
+
+  if (scene==="pause"){
+    if (sym==="escape") { scene="game"; }
+    return;
+  }
+  if (scene==="gameover") return;
+
+  // game
+  if (sym==="escape"){ scene="pause"; return; }
+
+  if (["w","a","s","d","space"].includes(sym)) {
+    state.key_states[sym]=true;
+    e.preventDefault();
+  }
+  if (sym==="a"||sym==="d") state.last_hkey=sym;
+  if (sym==="space") { fb.rotateLeft(state); e.preventDefault(); }
+
+  if (sym==="left"){
+    if(!bms.left_held){bms.left_held=true;bms.hold_frames=0;bms.repeat_acc=0;}
+    bms.right_held=false; e.preventDefault();
+  }
+  if (sym==="right"){
+    if(!bms.right_held){bms.right_held=true;bms.hold_frames=0;bms.repeat_acc=0;}
+    bms.left_held=false; e.preventDefault();
+  }
+});
+
+document.addEventListener("keyup", e => {
+  const sym = keyMap[e.key]||e.key.toLowerCase();
+  if (scene!=="game") return;
+  if (["w","a","s","d","space"].includes(sym)) state.key_states[sym]=false;
+  if (sym==="left"){bms.left_held=false;bms.hold_frames=0;bms.repeat_acc=0;}
+  if (sym==="right"){bms.right_held=false;bms.hold_frames=0;bms.repeat_acc=0;}
+});
+
+// Mouse clicks
+canvas.addEventListener("mousedown", e => {
+  e.preventDefault();
+  const [cx,cy]=toCanvasCoords(e);
+
+  if (scene==="title"){
+    const hit=hitTest(titleBtnRects,cx,cy);
+    if (hit==="btn_play"){resetGame();scene="game";}
+    else if (hit==="btn_quit"){window.close();}
+    return;
+  }
+  if (scene==="pause"){
+    const hit=hitTest(pauseBtnRects,cx,cy);
+    if (hit==="btn_resume") scene="game";
+    else if (hit==="btn_retry_pause"){resetGame();scene="game";}
+    else if (hit==="btn_home_pause") scene="title";
+    else if (hit==="btn_quit_pause") window.close();
+    return;
+  }
+  if (scene==="gameover"){
+    const hit=hitTest(gameoverBtnRects,cx,cy);
+    if (hit==="btn_retry_go"){resetGame();scene="game";}
+    else if (hit==="btn_home_go") scene="title";
+    else if (hit==="btn_quit_go") window.close();
+    return;
+  }
+
+  // game: left vs right click for block move
+  if (scene==="game"){
+    if (e.button===0){
+      // left click = move block left
+      if(!bms.left_held){bms.left_held=true;bms.hold_frames=0;bms.repeat_acc=0;}
+      bms.right_held=false;
+    } else if (e.button===2){
+      if(!bms.right_held){bms.right_held=true;bms.hold_frames=0;bms.repeat_acc=0;}
+      bms.left_held=false;
+    }
+  }
+});
+
+canvas.addEventListener("mouseup", e => {
+  if (scene!=="game") return;
+  if (e.button===0){bms.left_held=false;bms.hold_frames=0;bms.repeat_acc=0;}
+  if (e.button===2){bms.right_held=false;bms.hold_frames=0;bms.repeat_acc=0;}
+});
+
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+// Touch support (simple: tap on left/right half for block movement)
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  const [cx,cy]=toCanvasCoords(e);
+  if (scene==="title"){const hit=hitTest(titleBtnRects,cx,cy);if(hit==="btn_play"){resetGame();scene="game";}}
+  if (scene==="pause"){const hit=hitTest(pauseBtnRects,cx,cy);
+    if(hit==="btn_resume")scene="game";
+    else if(hit==="btn_retry_pause"){resetGame();scene="game";}
+    else if(hit==="btn_home_pause")scene="title";}
+  if (scene==="gameover"){const hit=hitTest(gameoverBtnRects,cx,cy);
+    if(hit==="btn_retry_go"){resetGame();scene="game";}
+    else if(hit==="btn_home_go")scene="title";}
+}, {passive:false});
+
+// ============================================================
+// Start
+// ============================================================
+requestAnimationFrame(mainLoop);
+</script>
+</body>
+</html>
