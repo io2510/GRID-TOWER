@@ -1055,7 +1055,24 @@ function resetGame() {
 const canvas = document.getElementById("gameCanvas");
 const ctx    = canvas.getContext("2d");
 
-function mainProc() {
+const TARGET_FPS     = 60;
+const FRAME_INTERVAL = 1000 / TARGET_FPS;  // 約16.667ms
+let _lastTime    = null;
+let _accumulator = 0;
+
+function mainProc(timestamp) {
+  requestAnimationFrame(mainProc);
+
+  if (_lastTime === null) _lastTime = timestamp;
+  _accumulator += timestamp - _lastTime;
+  _lastTime     = timestamp;
+
+  // 1フレーム分溜まっていなければスキップ
+  if (_accumulator < FRAME_INTERVAL) return;
+  // 詰まり対策：最大2フレーム分に切り捨て
+  _accumulator = Math.min(_accumulator, FRAME_INTERVAL * 2);
+  _accumulator -= FRAME_INTERVAL;
+
   ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
   ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
@@ -1105,8 +1122,6 @@ function mainProc() {
   } else if (scene === "gameover") {
     drawGameover(ctx, state.score, state.floor);
   }
-
-  requestAnimationFrame(mainProc);
 }
 
 // ============================================================
