@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRID TOWER ～目指せ100F～</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    user-select: none;
+  }
+  #wrapper {
+    position: relative;
+    width: 1920px; height: 1080px;
+  }
+  canvas {
+    display: block;
+    background: #111122;
+    cursor: default;
+  }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+</div>
+
+<script>
+// ============================================================
+// tutorial_data.js  ─  チュートリアルステップ定義
+// ============================================================
+const TUTORIAL_STEPS = [
+  {
+    step: 1,
+    text: "画面の見方を確認しましょう。\n中央がゲームエリア、左パネルにスコアとHP、\n右パネルに現在の階層（FLOOR）が表示されます。",
+    condition_type: "wait_input",
+    allowed_keys: ["f"],
+    highlight: "ui"
+  },
+  {
+    step: 2,
+    text: "プレイヤーの移動\n「A」キーで左、「D」キーで右に動かせます。\n実際に左右へ移動してみましょう。",
+    condition_type: "player_move",
+    allowed_keys: ["a", "d"],
+    highlight: "player"
+  },
+  {
+    step: 3,
+    text: "ジャンプ\n「W」キーでジャンプします。\nブロックの上に乗ったり、落下を避けるのに使います。",
+    condition_type: "player_jump",
+    allowed_keys: ["a", "d", "w"],
+    highlight: "player"
+  },
+  {
+    step: 4,
+    text: "ブロックの左右移動\n「←」「→」キー、またはマウスの左右クリックで\n落下中のブロックを左右に動かせます。",
+    condition_type: "block_move",
+    allowed_keys: ["a", "d", "w", "left", "right"],
+    highlight: "block"
+  },
+  {
+    step: 5,
+    text: "ブロックの回転\n「Space」キーを押すとブロックが回転します。\n実際に回転させてみましょう。",
+    condition_type: "block_rotate",
+    allowed_keys: ["a", "d", "w", "left", "right", "space"],
+    highlight: "block"
+  },
+  {
+    step: 6,
+    text: "落下速度アップ\n「↓」キーまたはマウスの中クリックを押している間、ブロックが速く落ちます。\n押し続けて速度アップを体験してみましょう。",
+    condition_type: "block_speed",
+    allowed_keys: ["a", "d", "w", "left", "right", "space", "down"],
+    highlight: "block"
+  },
+  {
+    step: 7,
+    text: "ハードドロップ\n「↓」キーまたはマウスの中クリックを素早く2回押すと、ブロックが即座に落下・固定されます。\nダブルタップで試してみましょう。",
+    condition_type: "hard_drop",
+    allowed_keys: ["a", "d", "w", "left", "right", "space", "down"],
+    highlight: "block"
+  },
+  {
+    step: 8,
+    text: "ラインを消す\n横一列をブロックで埋めるとラインが消え、スコアと階層が上がります。\n最下段の空いている2マスを埋めて、1ライン消去してみましょう。",
+    condition_type: "line_clear",
+    allowed_keys: ["all"],
+    highlight: "none"
+  },
+  {
+    step: 9,
+    text: "ビームの回避\n一定周期でプレイヤーを狙うビームが降ってきます。\n画面上部に「WARNING」が出たら、赤い範囲から逃げてください。\nビームを受けずに回避するとクリアです。",
+    condition_type: "beam_evade",
+    allowed_keys: ["all"],
+    highlight: "warning"
+  },
+  {
+    step: 10,
+    text: "チュートリアル完了！\n基本操作はすべて習得しました。\nブロックを積み上げて、できるだけ高い階層を目指しましょう！",
+    condition_type: "wait_input",
+    allowed_keys: ["f"],
+    highlight: "none"
+  }
+];
+
+// ============================================================
+// ブロックデータ（block_data.py の内容を埋め込み）
+// ============================================================
+const BLOCKS = [
+  { shape_id:1,  shape:[[0,0],[1,0],[0,1],[1,1]], color:"#ffdd00", outline:"#cc9900" }, // O
+  { shape_id:2,  shape:[[0,0],[1,0],[2,0],[3,0]], color:"#00ccff", outline:"#008899" }, // I
+  { shape_id:3,  shape:[[0,0],[0,1],[1,1],[2,1]], color:"#ff8800", outline:"#aa5500" }, // J
+  { shape_id:4,  shape:[[2,0],[0,1],[1,1],[2,1]], color:"#2244ff", outline:"#1122aa" }, // L
+  { shape_id:5,  shape:[[1,0],[2,0],[0,1],[1,1]], color:"#00dd44", outline:"#009922" }, // S
+  { shape_id:6,  shape:[[0,0],[1,0],[1,1],[2,1]], color:"#ff2222", outline:"#aa0000" }, // Z
+  { shape_id:7,  shape:[[1,0],[0,1],[1,1],[2,1]], color:"#cc44ff", outline:"#880099" }, // T
+];
+const RARE_BLOCK_IDS = [];
+const BLOCK_COLOR_MAP = {};
+BLOCKS.forEach(b => { BLOCK_COLOR_MAP[b.shape_id] = { fill: b.color, outline: b.outline }; });
+
+// ============================================================
+// 定数
+// ============================================================
+const SCREEN_WIDTH  = 1920;
+const SCREEN_HEIGHT = 1080;
+const GAME_LEFT   = 640;
+const GAME_RIGHT  = 1280;
+const GAME_TOP    = 40;
+const GAME_BOTTOM = 1040;
+const GRID_SIZE   = 40;
+const MAP_WIDTH   = 16;
+const MAP_HEIGHT  = 25;
+
+const GRAVITY    = 0.8;
+const JUMP_SPEED = -14.0;
+const MOVE_SPEED = 4;
+const PUSH_DELAY = 15;
+const P_HALF_W   = 15;
+const P_HALF_H   = 30;
+
+const BLOCK_FALL_INTERVAL      = 20;
+const BLOCK_FALL_INTERVAL_FAST = 2;
+const SCORE_PER_LINE           = 100;
+const LINES_PER_FLOOR          = 1;
+
+const MAX_HP            = 5;
+const INVINCIBLE_FRAMES = 180;
+
+const BEAM_CYCLE       = 1800;
+const BEAM_WARNING     = 120;
+const BEAM_WIDTH       = 3;
+const BEAM_SHOW_FRAMES = 90;
+
+const BLOCK_MOVE_INITIAL_DELAY = 12;
+const BLOCK_MOVE_REPEAT_DELAY  = 4;
+
+// ============================================================
+// ゴーストカラーキャッシュ
+// ============================================================
+const _ghostColorCache = {};
+function darkenColor(hex, factor = 0.25) {
+  if (_ghostColorCache[hex + factor]) return _ghostColorCache[hex + factor];
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  // 色名対応
+  const named = { yellow:"#ffff00", orange:"#ffa500", cyan:"#00ffff", lightgreen:"#90ee90",
+                   gray:"#808080", white:"#ffffff", red:"#ff0000" };
+  if (named[hex]) { const c = named[hex]; r=parseInt(c.slice(1,3),16); g=parseInt(c.slice(3,5),16); b=parseInt(c.slice(5,7),16); }
+  r = Math.floor(r * factor); g = Math.floor(g * factor); b = Math.floor(b * factor);
+  const result = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  _ghostColorCache[hex + factor] = result;
+  return result;
+}
+
+// ============================================================
+// シーン管理
+// ============================================================
+let scene = "title";
+let prevScene = "game";
+
+// ============================================================
+// tutorial.js ─ TutorialState クラス
+// ============================================================
+class TutorialState {
+  constructor() {
+    this.stepIdx    = 0;
+    this.isCleared  = false;
+    this.flags      = {};
+    this.initialVal = 0;
+    this.stepTimer  = 0;
+    this._needsSetup = false;
+    this.blockIndex  = 0;
+  }
+  currentStepData() {
+    if (this.stepIdx < TUTORIAL_STEPS.length) return TUTORIAL_STEPS[this.stepIdx];
+    return null;
+  }
+  reset() {
+    this.stepIdx     = 0;
+    this.isCleared   = false;
+    this.flags       = {};
+    this.initialVal  = 0;
+    this.stepTimer   = 0;
+    this._needsSetup = true;
+    this.blockIndex  = 0;
+  }
+  advance() {
+    this.stepIdx    += 1;
+    this.isCleared   = false;
+    this.flags       = {};
+    this.initialVal  = 0;
+    this.stepTimer   = 0;
+    this._needsSetup = true;
+  }
+  setCleared() { this.isCleared = true; }
+}
+
+function tutSetupStep(tutState, state, player, fb, beam = null) {
+  tutState._needsSetup = false;
+  const stepData = tutState.currentStepData();
+  if (!stepData) return;
+  const stepNum = stepData.step;
+
+  if (stepNum === 2) {
+    tutState.initialVal = player.x;
+  } else if (stepNum === 4) {
+    tutState.initialVal = fb.x;
+  } else if (stepNum === 8) {
+    tutState.initialVal = state.score;
+    const lastRow = MAP_HEIGHT - 1;
+    for (let y = 0; y < MAP_HEIGHT; y++)
+      for (let x = 0; x < MAP_WIDTH; x++)
+        state.blockMap[y][x] = 0;
+    for (let x = 0; x < MAP_WIDTH; x++)
+      state.blockMap[lastRow][x] = 1001;
+    state.blockMap[lastRow][Math.floor(MAP_WIDTH / 2)]     = 0;
+    state.blockMap[lastRow][Math.floor(MAP_WIDTH / 2) - 1] = 0;
+  } else if (stepNum === 9) {
+    tutState.initialVal = player.hp;
+    if (beam !== null) {
+      beam.phase = "wait";
+      beam.timer = BEAM_CYCLE - BEAM_WARNING - 60;
+    }
+  }
+}
+
+function tutCheckStepCondition(tutState, state, player, fb, beam) {
+  tutState.stepTimer += 1;
+  if (tutState.isCleared) return;
+  const stepData = tutState.currentStepData();
+  if (!stepData) return;
+  const ctype = stepData.condition_type;
+
+  if (ctype === "wait_input") {
+    if (tutState.stepTimer >= 180) tutState.setCleared();
+  } else if (ctype === "player_move") {
+    if (Math.abs(player.x - tutState.initialVal) > 80) tutState.setCleared();
+  } else if (ctype === "player_jump") {
+    if (tutState.flags.jumped) tutState.setCleared();
+  } else if (ctype === "block_move") {
+    if (Math.abs(fb.x - tutState.initialVal) > 0) tutState.setCleared();
+  } else if (ctype === "block_rotate") {
+    if (tutState.flags.rotated) tutState.setCleared();
+  } else if (ctype === "block_speed") {
+    if (tutState.flags.down_pressed) tutState.setCleared();
+  } else if (ctype === "hard_drop") {
+    if (tutState.flags.hard_dropped) tutState.setCleared();
+  } else if (ctype === "line_clear") {
+    if (state.score > tutState.initialVal) tutState.setCleared();
+  } else if (ctype === "beam_evade") {
+    if (tutState.flags.beam_fired && player.hp >= tutState.initialVal) {
+      tutState.setCleared();
+    } else if (player.hp < tutState.initialVal) {
+      tutState.flags.beam_fired = false;
+      tutState.initialVal = player.hp;
+    }
+  }
+}
+
+function tutDrawOverlay(ctx, tutState, width, height, gameLeft, gameTop, gameRight, gameBottom) {
+  const stepData = tutState.currentStepData();
+  if (!stepData) return;
+  const cx = width / 2;
+
+  const highlight = stepData.highlight;
+  if (highlight === "ui") {
+    if (Math.floor(tutState.stepTimer / 20) % 2 === 0) {
+      ctx.strokeStyle = "yellow"; ctx.lineWidth = 6;
+      ctx.strokeRect(40, gameTop, gameLeft - 80, gameBottom - gameTop);
+      ctx.strokeRect(gameRight + 40, gameTop, width - gameRight - 80, gameBottom - gameTop);
+    }
+  } else if (highlight === "warning") {
+    ctx.strokeStyle = "yellow"; ctx.lineWidth = 4;
+    ctx.setLineDash([10, 10]);
+    ctx.strokeRect(cx - 300, gameTop + 20, 600, 90);
+    ctx.setLineDash([]);
+  } else if (highlight === "player") {
+    ctx.strokeStyle = "#00ff88"; ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, gameBottom - gameTop);
+    ctx.setLineDash([]);
+  } else if (highlight === "block") {
+    ctx.strokeStyle = "#ffaa00"; ctx.lineWidth = 4;
+    ctx.setLineDash([12, 8]);
+    ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, 200);
+    ctx.setLineDash([]);
+  }
+
+  const panelW = 820, panelH = 170;
+  const panelX0 = cx - panelW / 2, panelY0 = gameTop + 130;
+  const panelX1 = cx + panelW / 2, panelY1 = panelY0 + panelH;
+
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  ctx.fillRect(panelX0, panelY0, panelW, panelH);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 2;
+  ctx.strokeRect(panelX0, panelY0, panelW, panelH);
+
+  const totalSteps = TUTORIAL_STEPS.length;
+  ctx.fillStyle = "#00eeff";
+  ctx.font = "bold 14px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText(`STEP ${stepData.step} / ${totalSteps}`, panelX0 + 16, panelY0 + 24);
+
+  const textY = panelY0 + panelH / 2 - (tutState.isCleared ? 18 : 0);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 18px Arial";
+  ctx.textAlign = "center";
+  wrapText(ctx, stepData.text, cx, textY, panelW - 40, 24);
+
+  if (tutState.isCleared) {
+    let promptText = "▶ 達成！ Fキーで次へ";
+    if (stepData.condition_type === "wait_input") promptText = "▶ Fキーで次へ";
+    ctx.fillStyle = "#ffff00";
+    ctx.font = "bold 15px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(promptText, cx, panelY1 - 12);
+  }
+}
+
+// 複数行テキスト描画ヘルパー（\n対応）
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const paragraphs = text.split("\n");
+  const totalLines = paragraphs.length;
+  const startY = y - ((totalLines - 1) * lineHeight) / 2;
+  paragraphs.forEach((line, i) => {
+    ctx.fillText(line, x, startY + i * lineHeight);
+  });
+}
+
+// ============================================================
+// ゲームクラス
+// ============================================================
+class GameState {
+  constructor() {
+    this.blockMap   = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.nextSerial = 1;
+    this.blockCount = 0;
+    this.rareCountdown = Math.floor(Math.random() * 5) + 28;
+    this.keyStates  = { w:false, a:false, s:false, d:false, space:false, down:false };
+    this.lastHkey   = "";
+    this.score      = 0;
+    this.floor      = 1;
+    this.floorLines = 0;
+    this.downPressCount     = 0;
+    this.downDoubleTapTimer = 0;
+  }
+}
+
+class Player {
+  constructor() {
+    this.x           = Math.floor((GAME_LEFT + GAME_RIGHT) / 2);
+    this.y           = GAME_BOTTOM - 20;
+    this.vx          = 0;
+    this.vy          = 0;
+    this.isGrounded  = false;
+    this.pushTimerL  = 0;
+    this.pushTimerR  = 0;
+    this.hp          = MAX_HP;
+    this.invincible  = 0;
+    this.blinkVisible = true;
+  }
+}
+
+class BeamState {
+  constructor() {
+    this.timer     = 0;
+    this.col       = 0;
+    this.showTimer = 0;
+    this.phase     = "wait";
+    this.blinkOn   = true;
+  }
+}
+
+class BlockMoveState {
+  constructor() {
+    this.leftHeld   = false;
+    this.rightHeld  = false;
+    this.holdFrames = 0;
+    this.repeatAcc  = 0;
+  }
+}
+
+class FallingBlock {
+  constructor() {
+    this.x       = 0; this.y = 0; this.timer = 0;
+    this.shapeId = 1; this.shape = [];
+    this.color   = "#ffdd00"; this.outline = "#cc9900";
+    this.spawnBlock(new GameState(), null, true, false);
+  }
+
+  spawnBlock(state, tutState, isInit = false, isTutorial = false) {
+    if (!isInit) {
+      state.blockCount    += 1;
+      state.rareCountdown -= 1;
+    }
+    let data;
+    if (isTutorial && tutState !== null) {
+      let normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+      if (normal.length === 0) normal = BLOCKS;
+      data = normal[tutState.blockIndex % normal.length];
+      tutState.blockIndex += 1;
+    } else {
+      if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) {
+        const rareId = RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)];
+        data = BLOCKS.find(b => b.shape_id === rareId);
+        state.rareCountdown = Math.floor(Math.random() * 5) + 28;
+      } else {
+        const normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+        data = normal.length > 0 ? normal[Math.floor(Math.random() * normal.length)] : BLOCKS[0];
+      }
+    }
+    this.shapeId = data.shape_id;
+    this.shape   = data.shape.map(([dx,dy]) => [dx,dy]);
+    this.color   = data.color;
+    this.outline = data.outline;
+    const maxDx  = Math.max(...this.shape.map(([dx]) => dx));
+    if (isTutorial) {
+      this.x = Math.floor((MAP_WIDTH - maxDx) / 2);
+    } else {
+      this.x = Math.floor(Math.random() * (MAP_WIDTH - maxDx - 3)) + 1;
+    }
+    this.y = 0; this.timer = 0;
+  }
+
+  getCells() {
+    return this.shape.map(([dx,dy]) => [this.x + dx, this.y + dy]);
+  }
+
+  getGhostCells(state) {
+    let ghostY = this.y;
+    while (!checkCollision(state, this, this.x, ghostY + 1)) ghostY++;
+    if (ghostY === this.y) return [];
+    return this.shape.map(([dx,dy]) => [this.x + dx, ghostY + dy]);
+  }
+
+  rotateLeft(state) {
+    let ns = this._rotate(this.shape, -1);
+    ns = this._normalize(ns);
+    if (!this._collides(state, ns)) this.shape = ns;
+  }
+
+  _rotate(shape, dir) {
+    return dir === 1
+      ? shape.map(([dx,dy]) => [-dy, dx])
+      : shape.map(([dx,dy]) => [dy, -dx]);
+  }
+
+  _normalize(shape) {
+    const minX = Math.min(...shape.map(([dx]) => dx));
+    const minY = Math.min(...shape.map(([,dy]) => dy));
+    return shape.map(([dx,dy]) => [dx - minX, dy - minY]);
+  }
+
+  _collides(state, shape) {
+    for (const [dx,dy] of shape) {
+      const tx = this.x + dx, ty = this.y + dy;
+      if (tx < 0 || tx >= MAP_WIDTH) return true;
+      if (ty >= MAP_HEIGHT) return true;
+      if (ty >= 0 && ty < MAP_HEIGHT && state.blockMap[ty][tx] >= 1) return true;
+    }
+    return false;
+  }
+}
+
+// ============================================================
+// ゲームロジック
+// ============================================================
+function checkCollision(state, fb, nx, ny) {
+  for (const [dx,dy] of fb.shape) {
+    const tx = nx + dx, ty = ny + dy;
+    if (tx < 0 || tx >= MAP_WIDTH) return true;
+    if (ty >= MAP_HEIGHT) return true;
+    if (ty >= 0 && ty < MAP_HEIGHT && state.blockMap[ty][tx] >= 1) return true;
+  }
+  return false;
+}
+
+function lockBlock(state, fb) {
+  const mapValue = fb.shapeId * 1000 + state.nextSerial;
+  for (const [gx,gy] of fb.getCells()) {
+    if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT)
+      state.blockMap[gy][gx] = mapValue;
+  }
+  state.nextSerial += 1;
+}
+
+function checkLineClear(state) {
+  let y = MAP_HEIGHT - 1;
+  while (y >= 0) {
+    if (!state.blockMap[y].includes(0)) {
+      for (let ty = y; ty > 0; ty--)
+        state.blockMap[ty] = [...state.blockMap[ty - 1]];
+      state.blockMap[0] = new Array(MAP_WIDTH).fill(0);
+      state.score      += SCORE_PER_LINE;
+      state.floorLines += 1;
+      if (state.floorLines >= LINES_PER_FLOOR) {
+        state.floor += 1;
+        state.floorLines = 0;
+      }
+    } else { y--; }
+  }
+}
+
+function applyGravityToBlocks(state) {
+  const activeIds = new Set();
+  for (let y = 0; y < MAP_HEIGHT; y++)
+    for (let x = 0; x < MAP_WIDTH; x++)
+      if (state.blockMap[y][x] >= 1) activeIds.add(state.blockMap[y][x]);
+
+  for (const blockId of [...activeIds].sort((a,b) => a - b)) {
+    const cells = [];
+    for (let y = 0; y < MAP_HEIGHT; y++)
+      for (let x = 0; x < MAP_WIDTH; x++)
+        if (state.blockMap[y][x] === blockId) cells.push([x,y]);
+    let canDrop = true;
+    for (const [cx,cy] of cells) {
+      const ny = cy + 1;
+      if (ny >= MAP_HEIGHT) { canDrop = false; break; }
+      if (state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId) { canDrop = false; break; }
+    }
+    if (canDrop && cells.length > 0) {
+      for (const [cx,cy] of cells.sort((a,b) => b[1] - a[1])) {
+        state.blockMap[cy + 1][cx] = blockId;
+        state.blockMap[cy][cx]     = 0;
+      }
+    }
+  }
+}
+
+function isSolidMap(state, gx, gy) {
+  if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
+  return state.blockMap[gy][gx] >= 1;
+}
+
+function isSolidAll(state, fb, gx, gy) {
+  if (isSolidMap(state, gx, gy)) return true;
+  for (const [fx,fy] of fb.getCells()) if (fx === gx && fy === gy) return true;
+  return false;
+}
+
+function teleportPlayer(player) {
+  player.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2);
+  player.y = GAME_TOP + 100;
+  player.vy = 0;
+  player.isGrounded = false;
+}
+
+function checkCrush(state, fb, player) {
+  if (player.invincible > 0 || !player.isGrounded) return;
+  const headGy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const lx     = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rx     = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const fbCells = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+  for (const cx of [lx, rx]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    const aboveFb  = fbCells.has(`${cx},${headGy}`);
+    const aboveMap = (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1);
+    if (aboveFb || aboveMap) {
+      player.hp         = Math.max(0, player.hp - 1);
+      player.invincible = INVINCIBLE_FRAMES;
+      if (player.hp <= 0) scene = "gameover";
+      else teleportPlayer(player);
+      break;
+    }
+  }
+}
+
+function checkCrushHarddrop(state, player) {
+  if (player.invincible > 0) return;
+  const checkXs = [
+    Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE),
+    Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE)
+  ];
+  const checkYs = [
+    Math.floor((player.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE),
+    Math.floor((player.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)
+  ];
+  for (const cy of checkYs) for (const cx of checkXs) {
+    if (cx < 0 || cx >= MAP_WIDTH || cy < 0 || cy >= MAP_HEIGHT) continue;
+    if (state.blockMap[cy][cx] >= 1) {
+      player.hp         = Math.max(0, player.hp - 1);
+      player.invincible = INVINCIBLE_FRAMES;
+      if (player.hp <= 0) scene = "gameover";
+      else teleportPlayer(player);
+      return;
+    }
+  }
+}
+
+function updateBeam(beam, player) {
+  beam.timer += 1;
+  if (beam.phase === "wait" && beam.timer >= BEAM_CYCLE - BEAM_WARNING) {
+    beam.phase = "warning";
+    const pGx  = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+    beam.col   = Math.max(0, Math.min(MAP_WIDTH - BEAM_WIDTH, pGx - Math.floor(BEAM_WIDTH / 2)));
+  }
+  if (beam.phase === "warning") beam.blinkOn = (Math.floor(beam.timer / 8) % 2 === 0);
+  if (beam.phase === "warning" && beam.timer >= BEAM_CYCLE) {
+    beam.phase     = "firing";
+    beam.showTimer = BEAM_SHOW_FRAMES;
+    beam.timer     = 0;
+  }
+  if (beam.phase === "firing") {
+    beam.showTimer -= 1;
+    if (player.invincible === 0) {
+      const pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+      if (beam.col <= pGx && pGx < beam.col + BEAM_WIDTH) {
+        player.hp         = Math.max(0, player.hp - 1);
+        player.invincible = INVINCIBLE_FRAMES;
+        if (player.hp <= 0) scene = "gameover";
+        else teleportPlayer(player);
+      }
+    }
+    if (beam.showTimer <= 0) beam.phase = "wait";
+  }
+}
+
+function updateBlockMove(state, fb, bms) {
+  if (bms.leftHeld && bms.rightHeld) { bms.holdFrames = 0; bms.repeatAcc = 0; return; }
+  if (!bms.leftHeld && !bms.rightHeld) { bms.holdFrames = 0; bms.repeatAcc = 0; return; }
+  const dir = bms.leftHeld ? -1 : 1;
+  if (bms.holdFrames === 0) {
+    if (!checkCollision(state, fb, fb.x + dir, fb.y)) fb.x += dir;
+    bms.repeatAcc = 0;
+  } else if (bms.holdFrames >= BLOCK_MOVE_INITIAL_DELAY) {
+    bms.repeatAcc += 1;
+    if (bms.repeatAcc >= BLOCK_MOVE_REPEAT_DELAY) {
+      bms.repeatAcc = 0;
+      if (!checkCollision(state, fb, fb.x + dir, fb.y)) fb.x += dir;
+    }
+  }
+  bms.holdFrames += 1;
+}
+
+function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
+  const interval = state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : BLOCK_FALL_INTERVAL;
+  fb.timer += 1;
+  if (fb.timer < interval) return;
+  fb.timer = 0;
+  if (!checkCollision(state, fb, fb.x, fb.y + 1)) {
+    fb.y += 1;
+  } else {
+    lockBlock(state, fb);
+    fb.spawnBlock(state, tutState, false, isTutorial);
+  }
+  checkLineClear(state);
+  applyGravityToBlocks(state);
+}
+
+function updatePlayer(state, fb, player) {
+  const ks = state.keyStates;
+  player.vx = 0;
+  if (ks.a && ks.d) {
+    if (state.lastHkey === "a") player.vx = -MOVE_SPEED;
+    else if (state.lastHkey === "d") player.vx = MOVE_SPEED;
+  } else if (ks.a) { player.vx = -MOVE_SPEED; }
+  else if (ks.d)   { player.vx =  MOVE_SPEED; }
+
+  const upperY = Math.floor((player.y - (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const lowerY = Math.floor((player.y + (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const nextLx = Math.floor((player.x + player.vx - (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  const nextRx = Math.floor((player.x + player.vx + (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+
+  let hittingBlock = false;
+  for (const gridY of [upperY, lowerY]) {
+    if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
+    if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1) {
+      hittingBlock = true;
+      const targetId = state.blockMap[gridY][nextLx];
+      const cells = [];
+      for (let y = 0; y < MAP_HEIGHT; y++) for (let x = 0; x < MAP_WIDTH; x++)
+        if (state.blockMap[y][x] === targetId) cells.push([x,y]);
+      const canPush = cells.every(([cx,cy]) => cx - 1 >= 0 && (state.blockMap[cy][cx-1] === 0 || state.blockMap[cy][cx-1] === targetId));
+      player.pushTimerR = 0;
+      if (canPush) {
+        player.pushTimerL += 1;
+        if (player.pushTimerL >= PUSH_DELAY) {
+          for (const [cx,cy] of cells.sort((a,b) => a[0]-b[0])) {
+            state.blockMap[cy][cx-1] = targetId; state.blockMap[cy][cx] = 0;
+          }
+          player.pushTimerL = 0;
+        } else { player.vx = 0; }
+      } else { player.vx = 0; }
+      break;
+    }
+    if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1) {
+      hittingBlock = true;
+      const targetId = state.blockMap[gridY][nextRx];
+      const cells = [];
+      for (let y = 0; y < MAP_HEIGHT; y++) for (let x = 0; x < MAP_WIDTH; x++)
+        if (state.blockMap[y][x] === targetId) cells.push([x,y]);
+      const canPush = cells.every(([cx,cy]) => cx + 1 < MAP_WIDTH && (state.blockMap[cy][cx+1] === 0 || state.blockMap[cy][cx+1] === targetId));
+      player.pushTimerL = 0;
+      if (canPush) {
+        player.pushTimerR += 1;
+        if (player.pushTimerR >= PUSH_DELAY) {
+          for (const [cx,cy] of cells.sort((a,b) => b[0]-a[0])) {
+            state.blockMap[cy][cx+1] = targetId; state.blockMap[cy][cx] = 0;
+          }
+          player.pushTimerR = 0;
+        } else { player.vx = 0; }
+      } else { player.vx = 0; }
+      break;
+    }
+  }
+
+  player.x += player.vx;
+  if (!hittingBlock) { player.pushTimerL = 0; player.pushTimerR = 0; }
+  player.x = Math.max(GAME_LEFT + P_HALF_W, Math.min(GAME_RIGHT - P_HALF_W, player.x));
+
+  if (!player.isGrounded) { player.vy += GRAVITY; }
+  else {
+    player.vy = 0;
+    if (ks.w) { player.vy = JUMP_SPEED; player.isGrounded = false; }
+  }
+
+  player.y         += player.vy;
+  player.isGrounded = false;
+
+  const lfootX = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rfootX = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const headGy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const footGy = Math.floor((player.y + P_HALF_H - GAME_TOP) / GRID_SIZE);
+
+  for (const cx of [lfootX, rfootX]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    if (player.vy >= 0 && footGy >= 0 && footGy < MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, footGy)) {
+        player.y = footGy * GRID_SIZE + GAME_TOP - P_HALF_H;
+        player.isGrounded = true; break;
+      }
+    }
+    if (player.vy < 0 && headGy >= 0 && headGy < MAP_HEIGHT) {
+      if (isSolidAll(state, fb, cx, headGy)) {
+        player.y = (headGy + 1) * GRID_SIZE + GAME_TOP + P_HALF_H;
+        player.vy = 0; break;
+      }
+    }
+  }
+  if (player.y > GAME_BOTTOM - P_HALF_H) { player.y = GAME_BOTTOM - P_HALF_H; player.isGrounded = true; }
+
+  if (player.invincible > 0) {
+    player.invincible -= 1;
+    player.blinkVisible = (Math.floor(player.invincible / 6) % 2 === 0);
+  } else { player.blinkVisible = true; }
+}
+
+// ============================================================
+// 描画関数
+// ============================================================
+function drawGame(ctx, state, fb, player, beam) {
+  // グリッド線
+  ctx.strokeStyle = "#333333"; ctx.lineWidth = 1;
+  ctx.setLineDash([8, 10]);
+  for (let gx = 0; gx <= MAP_WIDTH; gx++) {
+    const x = GAME_LEFT + gx * GRID_SIZE;
+    ctx.beginPath(); ctx.moveTo(x, GAME_TOP); ctx.lineTo(x, GAME_BOTTOM); ctx.stroke();
+  }
+  for (let gy = 0; gy <= MAP_HEIGHT; gy++) {
+    const y = GAME_TOP + gy * GRID_SIZE;
+    ctx.beginPath(); ctx.moveTo(GAME_LEFT, y); ctx.lineTo(GAME_RIGHT, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // ビーム警告
+  if (beam.phase === "warning" && beam.blinkOn) {
+    ctx.fillStyle = "#550000";
+    ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+  }
+  // ビーム発射
+  if (beam.phase === "firing") {
+    const bx = GAME_LEFT + beam.col * GRID_SIZE;
+    ctx.fillStyle = "#ff2200";
+    ctx.fillRect(bx, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(bx + 4, GAME_TOP, BEAM_WIDTH * GRID_SIZE - 8, GAME_BOTTOM - GAME_TOP);
+  }
+
+  // 固定ブロック描画
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      const val = state.blockMap[y][x];
+      if (val >= 1) {
+        const shapeId = Math.floor(val / 1000);
+        const col = BLOCK_COLOR_MAP[shapeId] || { fill:"#888888", outline:"#444444" };
+        ctx.fillStyle = col.fill;
+        ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = col.outline; ctx.lineWidth = 1;
+        ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      }
+    }
+  }
+
+  // ゴーストブロック
+  const ghostCells  = fb.getGhostCells(state);
+  if (ghostCells.length > 0) {
+    const ghostFill    = darkenColor(fb.color, 0.28);
+    const ghostOutline = darkenColor(fb.outline || fb.color, 0.45);
+    const fbCellSet    = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+    for (const [gx,gy] of ghostCells) {
+      if (fbCellSet.has(`${gx},${gy}`)) continue;
+      ctx.fillStyle = ghostFill;
+      ctx.fillRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+      ctx.strokeStyle = ghostOutline; ctx.lineWidth = 2;
+      ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+    }
+  }
+
+  // 落下中ブロック
+  for (const [gx,gy] of fb.getCells()) {
+    ctx.fillStyle = fb.color;
+    ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+    ctx.strokeStyle = fb.outline; ctx.lineWidth = 1;
+    ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+  }
+
+  // プレイヤー
+  if (player.blinkVisible) {
+    const fillCol = player.invincible > 0 ? "#ffaaaa" : "lightgreen";
+    ctx.fillStyle = fillCol;
+    ctx.fillRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1;
+    ctx.strokeRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+  }
+
+  // ビーム警告テキスト
+  if (beam.phase === "warning") {
+    const remainSec = Math.max(0, (BEAM_CYCLE - beam.timer) / 60).toFixed(1);
+    ctx.fillStyle = "#111111";
+    ctx.fillRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 2;
+    ctx.strokeRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+    ctx.fillText(`⚠ WARNING: BEAM INBOUND (${remainSec}s) ⚠`, (GAME_LEFT + GAME_RIGHT) / 2, GAME_TOP + 72);
+  }
+
+  // 左パネル（スコア・コントロール・HP）
+  const panelCx = Math.floor((40 + GAME_LEFT - 40) / 2);
+  ctx.fillStyle = "white"; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
+  ctx.fillText("SCORE", panelCx, GAME_TOP + 80);
+  ctx.fillText(state.score, panelCx, GAME_TOP + 120);
+
+  const controls = [
+    "CONTROLS","",
+    "＜ プレイヤー操作 ＞",
+    "[A] / [D] : ← / →",
+    "[W] : ジャンプ","",
+    "＜ ブロック操作 ＞",
+    "[↓] / [中クリック] : 落下速度UP",
+    "（2回押しで即落下）","",
+    "[←] / [→] : ブロック左右移動",
+    "[左クリ] : 左移動",
+    "[右クリ] : 右移動",
+    "（長押しで連続移動）",
+    "[Space] : 回転",
+    "[Esc] : ポーズ"
+  ];
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "bold 13px Arial";
+  controls.forEach((line, i) => {
+    if (i === 0) ctx.fillStyle = "#aaaaaa";
+    ctx.fillText(line, panelCx, GAME_TOP + 220 + i * 22);
+  });
+
+  const hpY = GAME_BOTTOM - 120;
+  ctx.fillStyle = "cyan"; ctx.font = "bold 16px Arial";
+  ctx.fillText("PLAYER HEALTH", panelCx, hpY - 40);
+  for (let i = 0; i < MAX_HP; i++) {
+    const sx  = panelCx - (MAX_HP - 1) * 25;
+    ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444";
+    ctx.font = "bold 38px Arial";
+    ctx.fillText("♥", sx + i * 50, hpY + 10);
+  }
+
+  // 右パネル（フロア表示）
+  const mapLeftX   = GAME_RIGHT + 80;
+  const mapRightX  = SCREEN_WIDTH - 80;
+  const mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
+  const baseY      = 900;
+  const floorGap   = 160;
+  const startF     = Math.max(1, state.floor - 1);
+  const endF       = startF + 5;
+  for (let f = startF; f <= endF; f++) {
+    const fy = baseY - (f - startF) * floorGap;
+    if (fy < GAME_TOP + 80) continue;
+    const lineCol = f === state.floor ? "yellow" : "#444444";
+    const textCol = f === state.floor ? "yellow" : "gray";
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(mapLeftX + 80, fy); ctx.lineTo(mapRightX - 100, fy); ctx.stroke();
+    ctx.fillStyle = textCol; ctx.font = "bold 24px Arial"; ctx.textAlign = "left";
+    ctx.fillText(`${f} F`, mapLeftX + 30, fy + 8);
+    if (f === state.floor) {
+      const progressOffset = (state.floorLines / LINES_PER_FLOOR) * floorGap;
+      const indY = fy - Math.floor(progressOffset);
+      ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px Arial"; ctx.textAlign = "right";
+      ctx.fillText("◆ NOW", mapRightX - 40, indY + 5);
+      ctx.fillStyle = "lightgreen"; ctx.font = "italic 12px Arial"; ctx.textAlign = "center";
+      ctx.fillText(`ASCENT PROGRESS: ${state.floorLines} / ${LINES_PER_FLOOR} LINES`, mapCenterX, fy + 30);
+    }
+  }
+
+  // ゲームエリア枠
+  ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "cyan"; ctx.lineWidth = 1;
+  ctx.strokeRect(40, GAME_TOP, GAME_LEFT - 80, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "yellow"; ctx.lineWidth = 2;
+  ctx.strokeRect(GAME_RIGHT + 40, GAME_TOP, SCREEN_WIDTH - GAME_RIGHT - 80, GAME_BOTTOM - GAME_TOP);
+}
+
+function drawTitle(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2;
+  ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#334455"; ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.strokeRect(cx - 480, 60, 960, H - 120);
+
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 72px Arial"; ctx.textAlign = "center";
+  ctx.fillText("GRID TOWER", cx, 230);
+  ctx.fillStyle = "#aaaacc"; ctx.font = "24px Arial";
+  ctx.fillText("～目指せ100F～", cx, 300);
+
+  const btnW = 400, btnH = 70, gap = 30;
+  const totalH = 4 * btnH + 3 * gap;
+  const startY = (H - totalH) / 2 + 80;
+  const buttons = [
+    ["PLAY",      "#22aa55", "#ffffff", "btn_play"],
+    ["HARD MODE", "#aa3322", "#ffffff", "btn_hard"],
+    ["TUTORIAL",  "#225588", "#ffffff", "btn_tutorial"],
+    ["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"],
+  ];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap);
+    ctx.fillStyle = bg;
+    ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1;
+    ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
+    ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+
+  ctx.fillStyle = "#445566"; ctx.font = "14px Arial";
+  ctx.fillText("© 2026  TETRIS x ACTION", cx, H - 80);
+}
+
+function drawPause(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2;
+  ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, W, H);
+  const pw = 500, ph = 520;
+  const px0 = cx - pw / 2, py0 = H / 2 - ph / 2;
+  ctx.fillStyle = "#1a1a2e"; ctx.fillRect(px0, py0, pw, ph);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 3; ctx.setLineDash([]);
+  ctx.strokeRect(px0, py0, pw, ph);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 48px Arial"; ctx.textAlign = "center";
+  ctx.fillText("PAUSE", cx, py0 + 90);
+
+  const btnW = 360, btnH = 65, gap = 20, startY = py0 + 160;
+  const buttons = [
+    ["RESUME",    "#22aa55", "#ffffff", "btn_resume"],
+    ["RETRY",     "#cc8800", "#ffffff", "btn_retry_pause"],
+    ["HOME",      "#225588", "#ffffff", "btn_home_pause"],
+    ["QUIT GAME", "#553333", "#ffaaaa", "btn_quit_pause"],
+  ];
+  _btnRects = _btnRects || {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap);
+    ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+    ctx.fillText(label, cx, y0 + btnH / 2 + 9);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function drawGameover(ctx, score, floorReached) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2;
+  ctx.fillStyle = "#0d0000"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ff2200"; ctx.font = "bold 80px Arial"; ctx.textAlign = "center";
+  ctx.fillText("GAME OVER", cx, H / 2 - 230);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 36px Arial";
+  ctx.fillText(`SCORE  :  ${score}`, cx, H / 2 - 110);
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "28px Arial";
+  ctx.fillText(`FLOOR REACHED  :  ${floorReached} F`, cx, H / 2 - 50);
+
+  const btnW = 400, btnH = 70, gap = 24, startY = H / 2 + 20;
+  const buttons = [
+    ["RETRY",     "#cc4400", "#ffffff", "btn_retry_go"],
+    ["HOME",      "#225588", "#ffffff", "btn_home_go"],
+    ["QUIT GAME", "#333333", "#aaaaaa", "btn_quit_go"],
+  ];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap);
+    ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
+    ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function hitBtn(tag, cx, cy) {
+  if (!_btnRects || !_btnRects[tag]) return false;
+  const r = _btnRects[tag];
+  return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h;
+}
+
+// ============================================================
+// 状態変数
+// ============================================================
+let state    = new GameState();
+let tutState = new TutorialState();
+let fb       = new FallingBlock();
+let player   = new Player();
+let beam     = new BeamState();
+let bms      = new BlockMoveState();
+let _btnRects = {};
+
+function resetGame() {
+  state  = new GameState();
+  fb     = new FallingBlock();
+  player = new Player();
+  beam   = new BeamState();
+  bms    = new BlockMoveState();
+}
+
+// ============================================================
+// メインループ
+// ============================================================
+const canvas = document.getElementById("gameCanvas");
+const ctx    = canvas.getContext("2d");
+
+function mainProc() {
+  ctx.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+  ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  if (scene === "title") {
+    drawTitle(ctx);
+  } else if (scene === "game" || scene === "tutorial") {
+    const isTut = (scene === "tutorial");
+
+    if (isTut) {
+      if (tutState._needsSetup) {
+        tutSetupStep(tutState, state, player, fb, beam);
+      }
+      const stepData = tutState.currentStepData();
+      if (stepData) {
+        if (stepData.condition_type !== "beam_evade") {
+          beam.timer = 0;
+        } else {
+          if (beam.phase === "firing" && beam.showTimer === 1) {
+            tutState.flags.beam_fired = true;
+          }
+        }
+      }
+    }
+
+    if (state.downDoubleTapTimer > 0) {
+      state.downDoubleTapTimer -= 1;
+      if (state.downDoubleTapTimer <= 0) state.downPressCount = 0;
+    }
+
+    updateBlockMove(state, fb, bms);
+    updateFallingBlock(state, fb, isTut, isTut ? tutState : null);
+    updatePlayer(state, fb, player);
+    checkCrush(state, fb, player);
+    updateBeam(beam, player);
+
+    if (isTut) tutCheckStepCondition(tutState, state, player, fb, beam);
+
+    if (scene === "game" || scene === "tutorial") {
+      drawGame(ctx, state, fb, player, beam);
+      if (isTut) {
+        tutDrawOverlay(ctx, tutState, SCREEN_WIDTH, SCREEN_HEIGHT, GAME_LEFT, GAME_TOP, GAME_RIGHT, GAME_BOTTOM);
+      }
+    }
+  } else if (scene === "pause") {
+    drawGame(ctx, state, fb, player, beam);
+    drawPause(ctx);
+  } else if (scene === "gameover") {
+    drawGameover(ctx, state.score, state.floor);
+  }
+
+  requestAnimationFrame(mainProc);
+}
+
+// ============================================================
+// 入力ハンドラ
+// ============================================================
+function getKey(code) {
+  const map = {
+    "KeyW":"w","KeyA":"a","KeyS":"s","KeyD":"d",
+    "ArrowLeft":"left","ArrowRight":"right","ArrowDown":"down","ArrowUp":"up",
+    "Space":"space","Escape":"escape","KeyF":"f","KeyE":"e"
+  };
+  return map[code] || code.toLowerCase().replace("key","");
+}
+
+document.addEventListener("keydown", e => {
+  const sym = getKey(e.code);
+
+  // スペース・矢印キーのスクロール抑制
+  if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
+
+  if (scene === "title") return;
+  if (scene === "pause") {
+    if (sym === "escape") scene = prevScene;
+    return;
+  }
+  if (scene === "gameover") return;
+
+  if (scene === "game" || scene === "tutorial") {
+    if (sym === "escape") { prevScene = scene; scene = "pause"; return; }
+  }
+
+  if (scene === "tutorial") {
+    const stepData = tutState.currentStepData();
+    if (!stepData) return;
+    const canAdvance = tutState.isCleared || stepData.condition_type === "wait_input";
+    if (canAdvance && sym === "f") {
+      tutState.advance();
+      if (tutState.currentStepData() === null) { resetGame(); scene = "game"; }
+      else { tutSetupStep(tutState, state, player, fb, beam); }
+      return;
+    }
+    const allowed = stepData.allowed_keys || [];
+    if (!allowed.includes("all") && !allowed.includes(sym)) return;
+    if (sym === "w") tutState.flags.jumped = true;
+    if (sym === "down") tutState.flags.down_pressed = true;
+    if (sym === "space") tutState.flags.rotated = true;
+  }
+
+  if (scene === "game" || scene === "tutorial") {
+    if (sym === "down" && !state.keyStates.down) {
+      if (state.downDoubleTapTimer > 0) {
+        state.downPressCount += 1;
+        if (state.downPressCount >= 2) {
+          while (!checkCollision(state, fb, fb.x, fb.y + 1)) fb.y++;
+          lockBlock(state, fb);
+          const isTut = (scene === "tutorial");
+          fb.spawnBlock(state, isTut ? tutState : null, false, isTut);
+          checkLineClear(state);
+          applyGravityToBlocks(state);
+          checkCrushHarddrop(state, player);
+          state.downPressCount = 0; state.downDoubleTapTimer = 0;
+          if (isTut) tutState.flags.hard_dropped = true;
+        }
+      } else {
+        state.downPressCount = 1; state.downDoubleTapTimer = 15;
+      }
+    }
+    if (sym in state.keyStates) state.keyStates[sym] = true;
+    if (sym === "a" || sym === "d") state.lastHkey = sym;
+    if (sym === "space") fb.rotateLeft(state);
+    if (sym === "left")  { if (!bms.leftHeld)  { bms.leftHeld  = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false; }
+    if (sym === "right") { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld  = false; }
+  }
+});
+
+document.addEventListener("keyup", e => {
+  const sym = getKey(e.code);
+  if (scene !== "game" && scene !== "tutorial") return;
+  if (sym in state.keyStates) state.keyStates[sym] = false;
+  if (sym === "left")  { bms.leftHeld  = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  if (sym === "right") { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+});
+
+// 座標変換（CSSスケール対応）
+function getCanvasPos(e) {
+  const rect  = canvas.getBoundingClientRect();
+  const scaleX = SCREEN_WIDTH  / rect.width;
+  const scaleY = SCREEN_HEIGHT / rect.height;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+
+canvas.addEventListener("mousedown", e => {
+  e.preventDefault();
+  const { x, y } = getCanvasPos(e);
+
+  if (e.button === 0) { // 左クリック
+    if (scene === "title") {
+      if (hitBtn("btn_play", x, y))      { resetGame(); scene = "game"; return; }
+      if (hitBtn("btn_tutorial", x, y))  { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; return; }
+      if (hitBtn("btn_quit", x, y))      { /* GitHub Pages では何もしない */ return; }
+      return;
+    }
+    if (scene === "pause") {
+      if (hitBtn("btn_resume", x, y))      { scene = prevScene; return; }
+      if (hitBtn("btn_retry_pause", x, y)) {
+        resetGame();
+        if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; }
+        else { scene = "game"; }
+        return;
+      }
+      if (hitBtn("btn_home_pause", x, y)) { scene = "title"; return; }
+      if (hitBtn("btn_quit_pause", x, y)) { /* 何もしない */ return; }
+      return;
+    }
+    if (scene === "gameover") {
+      if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; return; }
+      if (hitBtn("btn_home_go", x, y))  { scene = "title"; return; }
+      return;
+    }
+    if (scene === "tutorial") {
+      const stepData = tutState.currentStepData();
+      const allowed  = stepData ? stepData.allowed_keys || [] : [];
+      if (!allowed.includes("all") && !allowed.includes("left")) return;
+    }
+    if (scene === "game" || scene === "tutorial") {
+      if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
+      bms.rightHeld = false;
+    }
+  }
+
+  if (e.button === 1) { // 中クリック
+    if (scene === "tutorial") {
+      const stepData = tutState.currentStepData();
+      const allowed  = stepData ? stepData.allowed_keys || [] : [];
+      if (!allowed.includes("all") && !allowed.includes("down") && !allowed.includes("s")) return;
+      tutState.flags.down_pressed = true;
+    }
+    if (scene === "game" || scene === "tutorial") {
+      if (!state.keyStates.down) {
+        if (state.downDoubleTapTimer > 0) {
+          state.downPressCount += 1;
+          if (state.downPressCount >= 2) {
+            while (!checkCollision(state, fb, fb.x, fb.y + 1)) fb.y++;
+            lockBlock(state, fb);
+            const isTut = (scene === "tutorial");
+            fb.spawnBlock(state, isTut ? tutState : null, false, isTut);
+            checkLineClear(state);
+            applyGravityToBlocks(state);
+            checkCrushHarddrop(state, player);
+            state.downPressCount = 0; state.downDoubleTapTimer = 0;
+            if (isTut) tutState.flags.hard_dropped = true;
+          }
+        } else {
+          state.downPressCount = 1; state.downDoubleTapTimer = 15;
+        }
+      }
+      state.keyStates.down = true;
+    }
+  }
+
+  if (e.button === 2) { // 右クリック
+    if (scene === "tutorial") {
+      const stepData = tutState.currentStepData();
+      const allowed  = stepData ? stepData.allowed_keys || [] : [];
+      if (!allowed.includes("all") && !allowed.includes("right")) return;
+    }
+    if (scene === "game" || scene === "tutorial") {
+      if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
+      bms.leftHeld = false;
+    }
+  }
+});
+
+canvas.addEventListener("mouseup", e => {
+  if (e.button === 0 && (scene === "game" || scene === "tutorial")) {
+    bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0;
+  }
+  if (e.button === 1 && (scene === "game" || scene === "tutorial")) {
+    state.keyStates.down = false;
+  }
+  if (e.button === 2 && (scene === "game" || scene === "tutorial")) {
+    bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0;
+  }
+});
+
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+// ============================================================
+// スケーリング（ウィンドウに収める）
+// ============================================================
+function scaleCanvas() {
+  const wrapper = document.getElementById("wrapper");
+  const scaleX  = window.innerWidth  / SCREEN_WIDTH;
+  const scaleY  = window.innerHeight / SCREEN_HEIGHT;
+  const scale   = Math.min(scaleX, scaleY);
+  wrapper.style.transform = `scale(${scale})`;
+}
+window.addEventListener("resize", scaleCanvas);
+scaleCanvas();
+
+// ============================================================
+// 起動
+// ============================================================
+requestAnimationFrame(mainProc);
+</script>
+</body>
+</html>
