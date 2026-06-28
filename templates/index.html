@@ -107,7 +107,7 @@ const TUTORIAL_STEPS = [
 ];
 
 // ============================================================
-// ブロックデータ（block_data.py の内容を埋め込み）
+// ブロックデータ
 // ============================================================
 const BLOCKS = [
   { shape_id:1,  shape:[[0,0],[1,0],[0,1],[1,1]], color:"#ffdd00", outline:"#cc9900" }, // O
@@ -167,7 +167,6 @@ function darkenColor(hex, factor = 0.25) {
   let r = parseInt(hex.slice(1,3),16);
   let g = parseInt(hex.slice(3,5),16);
   let b = parseInt(hex.slice(5,7),16);
-  // 色名対応
   const named = { yellow:"#ffff00", orange:"#ffa500", cyan:"#00ffff", lightgreen:"#90ee90",
                    gray:"#808080", white:"#ffffff", red:"#ff0000" };
   if (named[hex]) { const c = named[hex]; r=parseInt(c.slice(1,3),16); g=parseInt(c.slice(3,5),16); b=parseInt(c.slice(5,7),16); }
@@ -184,7 +183,7 @@ let scene = "title";
 let prevScene = "game";
 
 // ============================================================
-// tutorial.js ─ TutorialState クラス
+// TutorialState クラス
 // ============================================================
 class TutorialState {
   constructor() {
@@ -342,7 +341,6 @@ function tutDrawOverlay(ctx, tutState, width, height, gameLeft, gameTop, gameRig
   }
 }
 
-// 複数行テキスト描画ヘルパー（\n対応）
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   const paragraphs = text.split("\n");
   const totalLines = paragraphs.length;
@@ -774,7 +772,6 @@ function updatePlayer(state, fb, player) {
 // 描画関数
 // ============================================================
 function drawGame(ctx, state, fb, player, beam) {
-  // グリッド線
   ctx.strokeStyle = "#333333"; ctx.lineWidth = 1;
   ctx.setLineDash([8, 10]);
   for (let gx = 0; gx <= MAP_WIDTH; gx++) {
@@ -787,12 +784,10 @@ function drawGame(ctx, state, fb, player, beam) {
   }
   ctx.setLineDash([]);
 
-  // ビーム警告
   if (beam.phase === "warning" && beam.blinkOn) {
     ctx.fillStyle = "#550000";
     ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
   }
-  // ビーム発射
   if (beam.phase === "firing") {
     const bx = GAME_LEFT + beam.col * GRID_SIZE;
     ctx.fillStyle = "#ff2200";
@@ -801,7 +796,6 @@ function drawGame(ctx, state, fb, player, beam) {
     ctx.fillRect(bx + 4, GAME_TOP, BEAM_WIDTH * GRID_SIZE - 8, GAME_BOTTOM - GAME_TOP);
   }
 
-  // 固定ブロック描画
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       const val = state.blockMap[y][x];
@@ -816,7 +810,6 @@ function drawGame(ctx, state, fb, player, beam) {
     }
   }
 
-  // ゴーストブロック
   const ghostCells  = fb.getGhostCells(state);
   if (ghostCells.length > 0) {
     const ghostFill    = darkenColor(fb.color, 0.28);
@@ -831,7 +824,6 @@ function drawGame(ctx, state, fb, player, beam) {
     }
   }
 
-  // 落下中ブロック
   for (const [gx,gy] of fb.getCells()) {
     ctx.fillStyle = fb.color;
     ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
@@ -839,7 +831,6 @@ function drawGame(ctx, state, fb, player, beam) {
     ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
   }
 
-  // プレイヤー
   if (player.blinkVisible) {
     const fillCol = player.invincible > 0 ? "#ffaaaa" : "lightgreen";
     ctx.fillStyle = fillCol;
@@ -848,7 +839,6 @@ function drawGame(ctx, state, fb, player, beam) {
     ctx.strokeRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
   }
 
-  // ビーム警告テキスト
   if (beam.phase === "warning") {
     const remainSec = Math.max(0, (BEAM_CYCLE - beam.timer) / 60).toFixed(1);
     ctx.fillStyle = "#111111";
@@ -859,7 +849,6 @@ function drawGame(ctx, state, fb, player, beam) {
     ctx.fillText(`⚠ WARNING: BEAM INBOUND (${remainSec}s) ⚠`, (GAME_LEFT + GAME_RIGHT) / 2, GAME_TOP + 72);
   }
 
-  // 左パネル（スコア・コントロール・HP）
   const panelCx = Math.floor((40 + GAME_LEFT - 40) / 2);
   ctx.fillStyle = "white"; ctx.font = "bold 28px Arial"; ctx.textAlign = "center";
   ctx.fillText("SCORE", panelCx, GAME_TOP + 80);
@@ -896,7 +885,6 @@ function drawGame(ctx, state, fb, player, beam) {
     ctx.fillText("♥", sx + i * 50, hpY + 10);
   }
 
-  // 右パネル（フロア表示）
   const mapLeftX   = GAME_RIGHT + 80;
   const mapRightX  = SCREEN_WIDTH - 80;
   const mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
@@ -923,7 +911,6 @@ function drawGame(ctx, state, fb, player, beam) {
     }
   }
 
-  // ゲームエリア枠
   ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.setLineDash([]);
   ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
   ctx.strokeStyle = "cyan"; ctx.lineWidth = 1;
@@ -1050,13 +1037,13 @@ function resetGame() {
 }
 
 // ============================================================
-// メインループ
+// メインループ（タイムスタンプによる60fps固定実装）
 // ============================================================
 const canvas = document.getElementById("gameCanvas");
 const ctx    = canvas.getContext("2d");
 
 const TARGET_FPS     = 60;
-const FRAME_INTERVAL = 1000 / TARGET_FPS;  // 約16.667ms
+const FRAME_INTERVAL = 1000 / TARGET_FPS;
 let _lastTime    = null;
 let _accumulator = 0;
 
@@ -1067,9 +1054,7 @@ function mainProc(timestamp) {
   _accumulator += timestamp - _lastTime;
   _lastTime     = timestamp;
 
-  // 1フレーム分溜まっていなければスキップ
   if (_accumulator < FRAME_INTERVAL) return;
-  // 詰まり対策：最大2フレーム分に切り捨て
   _accumulator = Math.min(_accumulator, FRAME_INTERVAL * 2);
   _accumulator -= FRAME_INTERVAL;
 
@@ -1080,20 +1065,13 @@ function mainProc(timestamp) {
     drawTitle(ctx);
   } else if (scene === "game" || scene === "tutorial") {
     const isTut = (scene === "tutorial");
-
     if (isTut) {
-      if (tutState._needsSetup) {
-        tutSetupStep(tutState, state, player, fb, beam);
-      }
+      if (tutState._needsSetup) tutSetupStep(tutState, state, player, fb, beam);
       const stepData = tutState.currentStepData();
-      if (stepData) {
-        if (stepData.condition_type !== "beam_evade") {
-          beam.timer = 0;
-        } else {
-          if (beam.phase === "firing" && beam.showTimer === 1) {
-            tutState.flags.beam_fired = true;
-          }
-        }
+      if (stepData && stepData.condition_type !== "beam_evade") {
+        beam.timer = 0;
+      } else if (stepData && beam.phase === "firing" && beam.showTimer === 1) {
+        tutState.flags.beam_fired = true;
       }
     }
 
@@ -1110,12 +1088,9 @@ function mainProc(timestamp) {
 
     if (isTut) tutCheckStepCondition(tutState, state, player, fb, beam);
 
-    if (scene === "game" || scene === "tutorial") {
-      drawGame(ctx, state, fb, player, beam);
-      if (isTut) {
-        tutDrawOverlay(ctx, tutState, SCREEN_WIDTH, SCREEN_HEIGHT, GAME_LEFT, GAME_TOP, GAME_RIGHT, GAME_BOTTOM);
-      }
-    }
+    drawGame(ctx, state, fb, player, beam);
+    if (isTut) tutDrawOverlay(ctx, tutState, SCREEN_WIDTH, SCREEN_HEIGHT, GAME_LEFT, GAME_TOP, GAME_RIGHT, GAME_BOTTOM);
+    
   } else if (scene === "pause") {
     drawGame(ctx, state, fb, player, beam);
     drawPause(ctx);
@@ -1125,7 +1100,7 @@ function mainProc(timestamp) {
 }
 
 // ============================================================
-// 入力ハンドラ
+// 入力ハンドラ・その他処理
 // ============================================================
 function getKey(code) {
   const map = {
@@ -1138,21 +1113,13 @@ function getKey(code) {
 
 document.addEventListener("keydown", e => {
   const sym = getKey(e.code);
-
-  // スペース・矢印キーのスクロール抑制
   if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
-
   if (scene === "title") return;
-  if (scene === "pause") {
-    if (sym === "escape") scene = prevScene;
-    return;
-  }
+  if (scene === "pause") { if (sym === "escape") scene = prevScene; return; }
   if (scene === "gameover") return;
-
   if (scene === "game" || scene === "tutorial") {
     if (sym === "escape") { prevScene = scene; scene = "pause"; return; }
   }
-
   if (scene === "tutorial") {
     const stepData = tutState.currentStepData();
     if (!stepData) return;
@@ -1169,7 +1136,6 @@ document.addEventListener("keydown", e => {
     if (sym === "down") tutState.flags.down_pressed = true;
     if (sym === "space") tutState.flags.rotated = true;
   }
-
   if (scene === "game" || scene === "tutorial") {
     if (sym === "down" && !state.keyStates.down) {
       if (state.downDoubleTapTimer > 0) {
@@ -1205,7 +1171,6 @@ document.addEventListener("keyup", e => {
   if (sym === "right") { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
 });
 
-// 座標変換（CSSスケール対応）
 function getCanvasPos(e) {
   const rect  = canvas.getBoundingClientRect();
   const scaleX = SCREEN_WIDTH  / rect.width;
@@ -1216,49 +1181,33 @@ function getCanvasPos(e) {
 canvas.addEventListener("mousedown", e => {
   e.preventDefault();
   const { x, y } = getCanvasPos(e);
-
-  if (e.button === 0) { // 左クリック
+  if (e.button === 0) {
     if (scene === "title") {
-      if (hitBtn("btn_play", x, y))      { resetGame(); scene = "game"; return; }
-      if (hitBtn("btn_tutorial", x, y))  { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; return; }
-      if (hitBtn("btn_quit", x, y))      { /* GitHub Pages では何もしない */ return; }
+      if (hitBtn("btn_play", x, y))      { resetGame(); scene = "game"; }
+      else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; }
       return;
     }
     if (scene === "pause") {
-      if (hitBtn("btn_resume", x, y))      { scene = prevScene; return; }
-      if (hitBtn("btn_retry_pause", x, y)) {
+      if (hitBtn("btn_resume", x, y))      { scene = prevScene; }
+      else if (hitBtn("btn_retry_pause", x, y)) {
         resetGame();
         if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; }
         else { scene = "game"; }
-        return;
       }
-      if (hitBtn("btn_home_pause", x, y)) { scene = "title"; return; }
-      if (hitBtn("btn_quit_pause", x, y)) { /* 何もしない */ return; }
+      else if (hitBtn("btn_home_pause", x, y)) { scene = "title"; }
       return;
     }
     if (scene === "gameover") {
-      if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; return; }
-      if (hitBtn("btn_home_go", x, y))  { scene = "title"; return; }
+      if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; }
+      else if (hitBtn("btn_home_go", x, y))  { scene = "title"; }
       return;
-    }
-    if (scene === "tutorial") {
-      const stepData = tutState.currentStepData();
-      const allowed  = stepData ? stepData.allowed_keys || [] : [];
-      if (!allowed.includes("all") && !allowed.includes("left")) return;
     }
     if (scene === "game" || scene === "tutorial") {
       if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
       bms.rightHeld = false;
     }
   }
-
-  if (e.button === 1) { // 中クリック
-    if (scene === "tutorial") {
-      const stepData = tutState.currentStepData();
-      const allowed  = stepData ? stepData.allowed_keys || [] : [];
-      if (!allowed.includes("all") && !allowed.includes("down") && !allowed.includes("s")) return;
-      tutState.flags.down_pressed = true;
-    }
+  if (e.button === 1) {
     if (scene === "game" || scene === "tutorial") {
       if (!state.keyStates.down) {
         if (state.downDoubleTapTimer > 0) {
@@ -1281,13 +1230,7 @@ canvas.addEventListener("mousedown", e => {
       state.keyStates.down = true;
     }
   }
-
-  if (e.button === 2) { // 右クリック
-    if (scene === "tutorial") {
-      const stepData = tutState.currentStepData();
-      const allowed  = stepData ? stepData.allowed_keys || [] : [];
-      if (!allowed.includes("all") && !allowed.includes("right")) return;
-    }
+  if (e.button === 2) {
     if (scene === "game" || scene === "tutorial") {
       if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
       bms.leftHeld = false;
@@ -1309,9 +1252,6 @@ canvas.addEventListener("mouseup", e => {
 
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
-// ============================================================
-// スケーリング（ウィンドウに収める）
-// ============================================================
 function scaleCanvas() {
   const wrapper = document.getElementById("wrapper");
   const scaleX  = window.innerWidth  / SCREEN_WIDTH;
@@ -1322,9 +1262,7 @@ function scaleCanvas() {
 window.addEventListener("resize", scaleCanvas);
 scaleCanvas();
 
-// ============================================================
-// 起動
-// ============================================================
+// 起動開始
 requestAnimationFrame(mainProc);
 </script>
 </body>
