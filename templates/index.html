@@ -124,14 +124,14 @@ const P_HALF_H   = 30;
 // 例）Python実行時の体感速度に近づけたい場合は 2.0 前後から試すことを推奨。
 const FALL_SPEED_SCALE = 2.0;
 
-const BLOCK_FALL_INTERVAL      = Math.round(20 * FALL_SPEED_SCALE);
+const BLOCK_FALL_INTERVAL      = Math.round(40 * FALL_SPEED_SCALE);
 const BLOCK_FALL_INTERVAL_FAST = Math.max(1, Math.round(2 * FALL_SPEED_SCALE));
 
 // 階層が上がるごとに自然落下を速くするための設定。
 // FLOOR_SPEEDUP_STEP_FLOORS 階層進むごとに少しずつ短縮していき、
 // MAX_SPEED_FLOOR 階層に到達した時点で MIN_BLOCK_FALL_INTERVAL（最高速度）に達する。
 // それ以降（MAX_SPEED_FLOOR超）は MIN_BLOCK_FALL_INTERVAL のまま頭打ちになる。
-const MIN_BLOCK_FALL_INTERVAL   = Math.max(1, Math.round(6 * FALL_SPEED_SCALE));
+const MIN_BLOCK_FALL_INTERVAL   = Math.max(1, Math.round(10 * FALL_SPEED_SCALE));
 const FLOOR_SPEEDUP_STEP_FLOORS = 10;
 const MAX_SPEED_FLOOR           = 90;
 // 1F～MAX_SPEED_FLOORの間に何段階の速度アップがあるかを計算し、
