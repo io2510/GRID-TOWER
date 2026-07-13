@@ -122,7 +122,7 @@ const P_HALF_H   = 30;
 // FALL_SPEED_SCALE を大きくするほど、ブロックが1マス落ちるまでのフレーム数が増えて
 // 「遅く」感じるようになる（1.0が元のPythonコードそのままの値）。
 // 例）Python実行時の体感速度に近づけたい場合は 2.0 前後から試すことを推奨。
-const FALL_SPEED_SCALE = 1.0;
+const FALL_SPEED_SCALE = 2.0;
 
 const BLOCK_FALL_INTERVAL      = Math.round(20 * FALL_SPEED_SCALE);
 const BLOCK_FALL_INTERVAL_FAST = Math.max(1, Math.round(2 * FALL_SPEED_SCALE));
