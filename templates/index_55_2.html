@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GRID TOWER ～目指せ100F～</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    user-select: none;
+  }
+  #wrapper {
+    position: relative;
+    width: 1920px; height: 1080px;
+  }
+  canvas {
+    display: block;
+    background: #111122;
+    cursor: default;
+    font-family: 'DotGothic16', sans-serif;
+  }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+</div>
+
+<script>
+// ============================================================
+// チュートリアルステップ定義 (tutorial_data.py 由来)
+// ============================================================
+const TUTORIAL_STEPS = [
+  { step: 1, text: "画面の見方を確認しましょう。\n中央がゲームエリア、左パネルにスコアとHP、\n右パネルに現在の階層（FLOOR）が表示されます。", condition_type: "wait_input", allowed_keys: ["f"], highlight: "ui" },
+  { step: 2, text: "プレイヤーの移動\n「A」キーで左、「D」キーで右に動かせます。\n実際に左右へ移動してみましょう。", condition_type: "player_move", allowed_keys: ["a", "d"], highlight: "player" },
+  { step: 3, text: "ジャンプ\n「W」キーでジャンプします。\nブロックの上に乗ったり、落下を避けるのに使います。", condition_type: "player_jump", allowed_keys: ["a", "d", "w"], highlight: "player" },
+  { step: 4, text: "ブロックの左右移動\n「←」「→」キー、またはマウスの左右クリックで\n落下中のブロックを左右に動かせます。", condition_type: "block_move", allowed_keys: ["a", "d", "w", "left", "right"], highlight: "block" },
+  { step: 5, text: "ブロックの回転\n「Space」キーを押すとブロックが回転します。\n実際に回転させてみましょう。", condition_type: "block_rotate", allowed_keys: ["a", "d", "w", "left", "right", "space"], highlight: "block" },
+  { step: 6, text: "落下速度アップ\n「↓」キーまたはマウスの中クリックを押している間、ブロックが速く落ちます。\n押し続けて速度アップを体験してみましょう。", condition_type: "block_speed", allowed_keys: ["a", "d", "w", "left", "right", "space", "down"], highlight: "block" },
+  { step: 7, text: "ハードドロップ\n「↓」キーまたはマウスの中クリックを素早く2回押すと、ブロックが即座に落下・固定されます。\nダブルタップで試してみましょう。", condition_type: "hard_drop", allowed_keys: ["a", "d", "w", "left", "right", "space", "down"], highlight: "block" },
+  { step: 8, text: "ラインを消す\n横一列をブロックで埋めるとラインが消え、スコアと階層が上がります。\n最下段の空いている2マスを埋めて、1ライン消去してみましょう。", condition_type: "line_clear", allowed_keys: ["all"], highlight: "none" },
+  { step: 9, text: "ビームの回避\n一定周期でプレイヤーを狙うビームが降ってきます。\n画面上部に「WARNING」が出たら、赤い範囲から逃げてください。\nビームを受けずに回避するとクリアです。", condition_type: "beam_evade", allowed_keys: ["all"], highlight: "warning" },
+  { step: 10, text: "チュートリアル完了！\n基本操作はすべて習得しました。\nブロックを積み上げて、できるだけ高い階層を目指しましょう！", condition_type: "wait_input", allowed_keys: ["f"], highlight: "none" }
+];
+
+// ============================================================
+// ブロックデータ (block_data.py 由来)
+// ============================================================
+const BLOCKS = [
+  { shape_id:1, name:"square",  shape:[[0,0],[1,0],[0,1],[1,1]], color:"#ffee00", outline:"#bbaa00" },
+  { shape_id:2, name:"I4",      shape:[[0,0],[0,1],[0,2],[0,3]], color:"#00eeff", outline:"#0099bb" },
+  { shape_id:3, name:"I3",      shape:[[0,0],[0,1],[0,2]], color:"#55bbff", outline:"#2277bb" },
+  { shape_id:4, name:"I2",      shape:[[0,0],[0,1]], color:"#aaddff", outline:"#6699bb" },
+  { shape_id:5, name:"skew2",   shape:[[0,0],[1,1]], color:"#77ffaa", outline:"#22bb66" },
+  { shape_id:6, name:"T",       shape:[[0,0],[1,0],[2,0],[1,1]], color:"#cc44ff", outline:"#881199" },
+  { shape_id:7, name:"L",       shape:[[0,0],[0,1],[0,2],[1,2]], color:"#ff8800", outline:"#bb5500" },
+  { shape_id:8, name:"J",       shape:[[1,0],[1,1],[0,2],[1,2]], color:"#4488ff", outline:"#2255bb" },
+  { shape_id:9, name:"S",       shape:[[1,0],[2,0],[0,1],[1,1]], color:"#44ff66", outline:"#229944" },
+  { shape_id:10,name:"Z",       shape:[[0,0],[1,0],[1,1],[2,1]], color:"#ff3333", outline:"#bb1111" },
+  { shape_id:11,name:"stairs",  shape:[[1,0],[0,1],[1,1]], color:"#ff00ff", outline:"#aa00aa" },
+  { shape_id:12,name:"concave", shape:[[0,0],[2,0],[0,1],[1,1],[2,1]], color:"#ff9955", outline:"#cc6622" },
+  { shape_id:13,name:"T_inv",   shape:[[0,0],[1,0],[2,0],[1,1],[1,2]], color:"#ff6699", outline:"#bb2255" },
+  { shape_id:14,name:"cross",   shape:[[1,0],[0,1],[1,1],[2,1],[1,2]], color:"#ffcc00", outline:"#bb8800" },
+  { shape_id:15,name:"battan",  shape:[[0,0],[2,0],[1,1],[0,2],[2,2]], color:"#00ffcc", outline:"#00aa88" },
+  { shape_id:16,name:"H",       shape:[[0,0],[2,0],[0,1],[2,1]], color:"#ff44aa", outline:"#bb1177" },
+  { shape_id:17,name:"O_frame", shape:[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[1,2],[2,2]], color:"#ffdd44", outline:"#bb9900" },
+  { shape_id:18,name:"one",     shape:[[0,0]], color:"#ffffff", outline:"#aaaaaa" }
+];
+const RARE_BLOCK_IDS = [12, 13, 14, 15, 16, 17, 18];
+const BLOCK_COLOR_MAP = {
+  1: {fill:"#887700", outline:"#554400"},
+  2: {fill:"#007788", outline:"#004455"},
+  3: {fill:"#225588", outline:"#113355"},
+  4: {fill:"#556677", outline:"#334455"},
+  5: {fill:"#227744", outline:"#114422"},
+  6: {fill:"#662288", outline:"#440055"},
+  7: {fill:"#884400", outline:"#552200"},
+  8: {fill:"#224488", outline:"#112255"},
+  9: {fill:"#226633", outline:"#115533"},
+  10:{fill:"#881111", outline:"#550000"},
+  11:{fill:"#880088", outline:"#550055"},
+  12:{fill:"#884422", outline:"#552211"},
+  13:{fill:"#883344", outline:"#551122"},
+  14:{fill:"#886600", outline:"#554400"},
+  15:{fill:"#007755", outline:"#004433"},
+  16:{fill:"#882255", outline:"#551133"},
+  17:{fill:"#886611", outline:"#554400"},
+  18:{fill:"#777777", outline:"#444444"}
+};
+
+// ============================================================
+// 定数
+// ============================================================
+const SCREEN_WIDTH  = 1920;
+const SCREEN_HEIGHT = 1080;
+const GAME_LEFT     = 640;
+const GAME_RIGHT    = 1280;
+const GAME_TOP      = 40;
+const GAME_BOTTOM   = 1040;
+const GRID_SIZE     = 40;
+const MAP_WIDTH     = 16;
+const MAP_HEIGHT    = 25;
+
+const GRAVITY    = 0.8;
+const JUMP_SPEED = -14.0;
+const MOVE_SPEED = 4;
+const PUSH_DELAY = 15;
+const P_HALF_W   = 15;
+const P_HALF_H   = 30;
+
+const BLOCK_FALL_INTERVAL      = 20;
+const BLOCK_FALL_INTERVAL_FAST = 2;
+const SCORE_PER_LINE           = 100;
+const LINES_PER_FLOOR          = 1;
+const MAX_HP                   = 5;
+const INVINCIBLE_FRAMES         = 180;
+
+const BEAM_CYCLE       = 600;
+const BEAM_WARNING     = 120;
+const BEAM_WIDTH       = 3;
+const BEAM_SHOW_FRAMES = 90;
+
+const BLOCK_MOVE_INITIAL_DELAY = 12;
+const BLOCK_MOVE_REPEAT_DELAY  = 4;
+const COMBO_BUFFER_FRAMES      = 180;
+const LINE_CLEAR_INTERVAL      = 6;
+const NORMAL_BLOCK_NO_REPEAT_WINDOW = 3;
+
+const FIXED_TERRAIN_BASE = 90000;
+const PUZZLE_BLUE_ID     = 3001;
+const PUZZLE_RED_ID      = 3002;
+const TRAP_GRACE_FRAMES  = 45;
+const BIG_BEAM_WARN_FRAMES = 30;
+const BIG_BEAM_FIRE_FRAMES = 20;
+
+// ============================================================
+// マップ・フェーズ配置データ (boss_data.py 由来)
+// ============================================================
+const BOSS_20F_MAP = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,9999,9999],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,9999,9999],
+  [0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0],
+  [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0],
+  [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0],
+  [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0],
+  [0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0],
+  [0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0],
+  [0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0],
+  [0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+
+const BOSS_30F_PHASE_1 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,0,1,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,1,1,1,0,0,0,0,1,0,0,0,0,0,0],
+  [0,1,1,1,1,1,0,0,1,1,1,0,0,0,0,0]
+];
+
+const BOSS_30F_PHASE_2 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0],[0,1,2,1,0,0,2,0,1,1,0,0,0,0,0,0],[0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0],
+  [0,0,0,0,0,0,1,0,0,1,1,0,1,1,0,0]
+];
+
+const BOSS_30F_PHASE_3 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0],[0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,0],[0,1,0,1,0,0,0,0,0,0,0,2,0,0,1,0],[0,0,1,0,0,0,0,0,0,0,2,2,2,0,1,0],
+  [0,2,1,0,0,0,0,0,0,0,0,2,0,0,1,0],[0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0],[0,0,0,0,1,0,2,0,1,0,0,0,0,0,0,0],
+  [0,0,0,1,0,2,2,2,0,1,0,0,0,2,2,2]
+];
+
+const BOSS_30F_PHASES = [BOSS_30F_PHASE_1, BOSS_30F_PHASE_2, BOSS_30F_PHASE_3];
+
+const BOSS_40F_MAP = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0],[0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0],
+  [0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,0,0,0,0,1,1,0,0,0,0,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,1,1,1,1,1,0,0,1,1,1,1,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,1,0,0,0,1,1,1,1,0,0,0,1,1,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+
+function encode_fixed_terrain(serial) { return FIXED_TERRAIN_BASE + serial; }
+function is_fixed_terrain(block_id) { return block_id >= FIXED_TERRAIN_BASE && block_id !== 9999; }
+
+// ============================================================
+// BossManager クラス (boss_data.py 完全互換)
+// ============================================================
+class BossManager {
+  constructor() { this.reset_all(); }
+  reset_all() {
+    this.savedBlockMap = null;
+    this.isBossActive = false;
+    this.bossFloor = 10;
+    this.bossHp = 0;
+    this.cursedBeamActive = false;
+    this.bossTimer = 0;
+    this.targetReached = false;
+    
+    // 30F
+    this.puzzleMap = null;
+    this.boss30PhaseIndex = 0;
+    this.boss30Hp = 0;
+    this.boss30Timer = 0;
+    this.trapActive = false;
+    this.trapTimer = 0;
+    this.bigBeamPhase = "none";
+    this.bigBeamTimer = 0;
+    this.trapBlinkOn = true;
+    this.boss30Cleared = false;
+    
+    // 40F
+    this.boss40Step = 0;
+    this.boss40Timer = 0;
+    this.boss40SearchCount = 0;
+    this.boss40LaserPhase = "none";
+    this.boss40ActiveCols = [];
+    this.boss40ActiveRows = [];
+  }
+  saveCurrentMap(blockMap) { this.savedBlockMap = blockMap.map(row => [...row]); }
+  restorePreviousMap(state) { if (this.savedBlockMap) { state.blockMap = this.savedBlockMap.map(row => [...row]); } }
+  
+  generateBossStage(state, floor) {
+    this.bossFloor = floor;
+    this.isBossActive = true;
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    
+    if (floor === 10) {
+      const startY = MAP_HEIGHT - 8;
+      for (let y = startY; y < MAP_HEIGHT; y++) {
+        const holeX = Math.floor(Math.random() * MAP_WIDTH);
+        const mapValue = encode_fixed_terrain(state.nextSerial);
+        for (let x = 0; x < MAP_WIDTH; x++) { if (x !== holeX) state.blockMap[y][x] = mapValue; }
+        state.nextSerial += 1;
+      }
+      this.bossHp = 8;
+    } else if (floor === 20) {
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          let val = BOSS_20F_MAP[y][x];
+          if (val === 9999) state.blockMap[y][x] = 9999;
+          else if (val > 0) state.blockMap[y][x] = encode_fixed_terrain(state.nextSerial);
+        }
+      }
+      state.nextSerial += 1;
+      this.bossTimer = 3600;
+      this.targetReached = false;
+    } else if (floor === 30) {
+      this.boss30PhaseIndex = 0;
+      this.boss30Hp = 3;
+      this.boss30Timer = 3600;
+      this.trapActive = false;
+      this.trapTimer = 0;
+      this.bigBeamPhase = "none";
+      this.bigBeamTimer = 0;
+      this.boss30Cleared = false;
+      this.generate_puzzle_pattern();
+    } else if (floor === 40) {
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          if (BOSS_40F_MAP[y][x] === 1) state.blockMap[y][x] = encode_fixed_terrain(state.nextSerial);
+        }
+      }
+      state.nextSerial += 1;
+      this.bossTimer = 3600;
+      this.targetReached = false;
+      this.init_boss40_state();
+    }
+  }
+
+  generate_puzzle_pattern() {
+    let grid = BOSS_30F_PHASES[this.boss30PhaseIndex % BOSS_30F_PHASES.length];
+    this.puzzleMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (grid[y][x] === 1) this.puzzleMap[y][x] = PUZZLE_BLUE_ID;
+        else if (grid[y][x] === 2) this.puzzleMap[y][x] = PUZZLE_RED_ID;
+      }
+    }
+  }
+
+  check_blue_complete(state) {
+    if (!this.puzzleMap) return false;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (this.puzzleMap[y][x] === PUZZLE_BLUE_ID && state.blockMap[y][x] < 1) return false;
+      }
+    }
+    return true;
+  }
+
+  check_red_filled(state) {
+    if (!this.puzzleMap) return false;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (this.puzzleMap[y][x] === PUZZLE_RED_ID && state.blockMap[y][x] >= 1) return true;
+      }
+    }
+    return false;
+  }
+
+  reset_30f_round(state) {
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.generate_puzzle_pattern();
+    this.boss30Timer = 3600;
+    this.trapActive = false;
+    this.trapTimer = 0;
+  }
+
+  advance_30f_phase(state) {
+    this.boss30PhaseIndex += 1;
+    this.reset_30f_round(state);
+  }
+
+  trigger_big_beam() {
+    if (this.bigBeamPhase === "none") { this.bigBeamPhase = "warning"; this.bigBeamTimer = BIG_BEAM_WARN_FRAMES; }
+  }
+
+  update_boss30_logic(state, playerGx, playerInvincible) {
+    if (this.bigBeamPhase !== "none") {
+      this.bigBeamTimer -= 1;
+      if (this.bigBeamPhase === "warning" && this.bigBeamTimer <= 0) {
+        this.bigBeamPhase = "firing"; this.bigBeamTimer = BIG_BEAM_FIRE_FRAMES;
+        if (playerGx !== 0 && playerGx !== MAP_WIDTH - 1 && playerInvincible === 0) return "damage";
+      } else if (this.bigBeamPhase === "firing" && this.bigBeamTimer <= 0) {
+        this.bigBeamPhase = "none";
+      }
+      return "running";
+    }
+    this.boss30Timer -= 1;
+    if (this.boss30Timer <= 0) { this.trigger_big_beam(); return "running"; }
+    if (this.check_red_filled(state)) {
+      if (!this.trapActive) { this.trapActive = true; this.trapTimer = TRAP_GRACE_FRAMES; }
+      else { this.trapTimer -= 1; if (this.trapTimer <= 0) { this.trigger_big_beam(); return "running"; } }
+    } else { this.trapActive = false; this.trapTimer = 0; }
+    
+    if (this.check_blue_complete(state)) {
+      this.boss30Hp -= 1;
+      if (this.boss30Hp <= 0) return "victory";
+      else { this.advance_30f_phase(state); return "advance"; }
+    }
+    return "running";
+  }
+
+  init_boss40_state() {
+    this.boss40Step = 0; this.boss40Timer = 20; this.boss40SearchCount = 0;
+    this.boss40LaserPhase = "none"; this.boss40ActiveCols = []; this.boss40ActiveRows = [];
+  }
+
+  update_boss40_logic(player) {
+    this.bossTimer -= 1;
+    if (this.bossTimer <= 0) return "clear";
+    this.boss40Timer -= 1;
+    
+    const WARN_F = 60, FIRE_F = 60, CYCLE_F = WARN_F + FIRE_F;
+    if (this.boss40Step === 0) {
+      if (this.boss40Timer > 0) {
+        this.boss40LaserPhase = "none"; this.boss40ActiveCols = []; this.boss40ActiveRows = [];
+        return "running";
+      } else { this.boss40Step = 1; this.boss40Timer = CYCLE_F; this.boss40SearchCount = 0; }
+    }
+    if (this.boss40Timer <= 0) {
+      if (this.boss40Step === 7) {
+        this.boss40SearchCount += 1;
+        if (this.boss40SearchCount < 3) this.boss40Timer = CYCLE_F;
+        else { this.boss40SearchCount = 0; this.boss40Step += 1; this.boss40Timer = CYCLE_F; }
+      } else { this.boss40Step += 1; this.boss40Timer = CYCLE_F; }
+      if (this.boss40Step > 12) { this.boss40Step = 1; this.boss40SearchCount = 0; }
+    }
+    
+    this.boss40LaserPhase = (this.boss40Timer > FIRE_F) ? "warning" : "firing";
+    
+    if (this.boss40Step === 1) { this.boss40ActiveCols = []; this.boss40ActiveRows = [18, 19, 23, 24]; }
+    else if (this.boss40Step === 2) { this.boss40ActiveCols = [3,4,5,6,7,8,9,10,11,12]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 3) { this.boss40ActiveCols = [12,13,14,15]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 4) { this.boss40ActiveCols = [8,9,10,11]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 5) { this.boss40ActiveCols = [4,5,6,7]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 6) { this.boss40ActiveCols = [0,1,2,3]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 7) {
+      if (this.boss40Timer === CYCLE_F) {
+        let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+        let pGy = Math.floor((player.y - GAME_TOP) / GRID_SIZE);
+        this.boss40ActiveCols = [-1,0,1].map(i => Math.max(0, Math.min(15, pGx + i)));
+        this.boss40ActiveRows = [-1,0,1].map(i => Math.max(0, Math.min(24, pGy + i)));
+      }
+    }
+    else if (this.boss40Step === 8) { this.boss40ActiveCols = []; this.boss40ActiveRows = [16,17,18,19,20,21,22,23,24]; }
+    else if (this.boss40Step === 9) { this.boss40ActiveCols = [2,5,8,11,14]; this.boss40ActiveRows = [4,9,14,19,24]; }
+    else if (this.boss40Step === 10) { this.boss40ActiveCols = [8,9,10,11,12,13,14,15]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 11) { this.boss40ActiveCols = [0,1,2,3,4,5,6,7]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 12) {
+      this.boss40ActiveCols = [4,5,6,7,8,9,10,11];
+      this.boss40ActiveRows = [6,7,8,9,10,11,12,13,14,15,16,17];
+    }
+    return "running";
+  }
+}
+const bossSys = new BossManager();
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+const _ghostColorCache = {};
+function darkenColor(hex, factor = 0.25) {
+  if (!hex.startsWith("#")) return "#333333";
+  if (_ghostColorCache[hex + factor]) return _ghostColorCache[hex + factor];
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = Math.floor(r * factor); g = Math.floor(g * factor); b = Math.floor(b * factor);
+  const result = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  _ghostColorCache[hex + factor] = result;
+  return result;
+}
+
+function getOrdinal(n) {
+  const v = n % 100; if (v >= 11 && v <= 13) return "th";
+  switch (n % 10) { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th"; }
+}
+
+function capFloorAtBoss(state) {
+  if (state.floor >= 10 && !bossSys.cursedBeamActive) state.floor = 10;
+  else if (state.floor >= 20 && !bossSys.targetReached) state.floor = 20;
+  else if (state.floor >= 30 && !bossSys.boss30Cleared) state.floor = 30;
+  else if (state.floor >= 40) state.floor = 40;
+}
+
+function flushLineClearQueue(state, awardScore = true) {
+  if (awardScore) state.score += SCORE_PER_LINE * state.lineClearQueue.length;
+  state.lineClearQueue = []; state.lineClearTimer = 0;
+}
+
+function getBeamCycle(floor) {
+  if (bossSys.cursedBeamActive) return 1800;
+  if (floor < 10) return Infinity;
+  if (floor >= 90) return 200;
+  return 600 - Math.floor((floor - 10) / 10) * 50;
+}
+
+function getFallInterval(floor) {
+  if (floor >= 90) return 6;
+  if (floor >= 80) return 7;
+  if (floor >= 70) return 8;
+  if (floor >= 60) return 9;
+  if (floor >= 50) return 10;
+  if (floor >= 40) return 12;
+  if (floor >= 30) return 14;
+  if (floor >= 20) return 16;
+  if (floor >= 10) return 18;
+  return 20;
+}
+
+// ============================================================
+// シーン管理
+// ============================================================
+let scene = "title";
+let prevScene = "game";
+let _btnRects = {};
+
+// ============================================================
+// クラス定義
+// ============================================================
+class TutorialState {
+  constructor() { this.reset(); }
+  currentStepData() { return this.stepIdx < TUTORIAL_STEPS.length ? TUTORIAL_STEPS[this.stepIdx] : null; }
+  isBlockFrozen() { let sd = this.currentStepData(); return sd ? sd.step <= 3 : false; }
+  isWaitingForAck() { return !this.started; }
+  reset() { this.stepIdx = 0; this.isCleared = false; this.flags = {}; this.initialVal = 0; this.stepTimer = 0; this._needsSetup = true; this.blockIndex = 0; this.started = false; }
+  advance() { this.stepIdx += 1; this.isCleared = false; this.flags = {}; this.initialVal = 0; this.stepTimer = 0; this._needsSetup = true; this.started = false; }
+  setCleared() { this.isCleared = true; }
+}
+
+function tutSetupStep(tutState, state, player, fb, beam = null) {
+  tutState._needsSetup = false;
+  const sd = tutState.currentStepData(); if (!sd) return;
+  if (sd.step === 2) tutState.initialVal = player.x;
+  else if (sd.step === 4) tutState.initialVal = fb.x;
+  else if (sd.step === 8) {
+    tutState.initialVal = state.score;
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    for (let x = 0; x < MAP_WIDTH; x++) state.blockMap[MAP_HEIGHT - 1][x] = 1001;
+    state.blockMap[MAP_HEIGHT - 1][Math.floor(MAP_WIDTH / 2)] = 0;
+    state.blockMap[MAP_HEIGHT - 1][Math.floor(MAP_WIDTH / 2) - 1] = 0;
+  } else if (sd.step === 9) {
+    tutState.initialVal = player.hp;
+    if (beam) { beam.phase = "wait"; beam.timer = 1800 - 120 - 60; }
+  }
+}
+
+function tutCheckStepCondition(tutState, state, player, fb, beam) {
+  tutState.stepTimer += 1; if (tutState.isCleared) return;
+  const sd = tutState.currentStepData(); if (!sd) return;
+  const ctype = sd.condition_type;
+  if (ctype === "player_move") { if (Math.abs(player.x - tutState.initialVal) > 80) tutState.setCleared(); }
+  else if (ctype === "player_jump") { if (tutState.flags.jumped) tutState.setCleared(); }
+  else if (ctype === "block_move") { if (Math.abs(fb.x - tutState.initialVal) > 0) tutState.setCleared(); }
+  else if (ctype === "block_rotate") { if (tutState.flags.rotated) tutState.setCleared(); }
+  else if (ctype === "block_speed") { if (tutState.flags.down_pressed) tutState.setCleared(); }
+  else if (ctype === "hard_drop") { if (tutState.flags.hard_dropped) tutState.setCleared(); }
+  else if (ctype === "line_clear") { if (state.score > tutState.initialVal) tutState.setCleared(); }
+  else if (ctype === "beam_evade") {
+    if (tutState.flags.beam_fired && player.hp >= tutState.initialVal) tutState.setCleared();
+    else if (player.hp < tutState.initialVal) { tutState.flags.beam_fired = false; tutState.initialVal = player.hp; }
+  }
+}
+
+class GameState {
+  constructor() {
+    this.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.nextSerial = 1; this.blockCount = 0; this.rareCountdown = Math.floor(Math.random() * 5) + 28;
+    this.keyStates = { w:false, a:false, s:false, d:false, space:false, down:false }; this.lastHkey = "";
+    this.score = 0; this.floor = 1; this.floorLines = 0; this.downPressCount = 0; this.downDoubleTapTimer = 0;
+    this.comboTotalLines = 0; this.comboCount = 0; this.comboBlocks = 0; this.pendingComboBlocks = 0; this.comboTimer = 0; this.comboEverActivated = false;
+    this.gravityTimer = 0; this.pushedBlockIds = new Set(); this.pushGravityTimer = 0; this.lineClearQueue = []; this.lineClearTimer = 0; this.nextBlockData = null;
+    this.notifiedFloor = 1; this.bgAnim = { active: false, y: 0, text: "", color: "" };
+    this.recentNormalShapeIds = [];
+  }
+  getBlockCache() {
+    let cache = {};
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let bid = this.blockMap[y][x]; if (bid >= 1) { if (!cache[bid]) cache[bid] = []; cache[bid].push([x, y]); }
+      }
+    }
+    return cache;
+  }
+}
+
+class Player {
+  constructor() { this.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); this.y = GAME_BOTTOM - 20; this.vx = 0; this.vy = 0; this.isGrounded = false; this.pushTimerL = 0; this.pushTimerR = 0; this.hp = MAX_HP; this.invincible = 0; this.blinkVisible = true; }
+}
+
+class BeamState { constructor() { this.timer = 0; this.col = 0; this.showTimer = 0; this.phase = "wait"; this.blinkOn = true; } }
+class BlockMoveState { constructor() { this.leftHeld = false; this.rightHeld = false; this.holdFrames = 0; this.repeatAcc = 0; } }
+
+class FallingBlock {
+  constructor() { this.x = 0; this.y = 0; this.timer = 0; this.shapeId = 1; this.shape = []; this.color = "#ffdd00"; this.outline = "#cc9900"; this.spawnBlock(new GameState(), null, true, false); }
+  _pickBlockData(state, isTutorial, tutState) {
+    if (isTutorial && tutState) { let normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id)); return normal[tutState.blockIndex % normal.length]; }
+    if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) { return BLOCKS.find(b => b.shape_id === RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)]); }
+    let normal = BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id));
+    let candidates = normal.filter(b => !state.recentNormalShapeIds.includes(b.shape_id));
+    if (candidates.length === 0) candidates = normal;
+    let choice = candidates[Math.floor(Math.random() * candidates.length)];
+    state.recentNormalShapeIds.push(choice.shape_id);
+    if (state.recentNormalShapeIds.length > NORMAL_BLOCK_NO_REPEAT_WINDOW) state.recentNormalShapeIds.shift();
+    return choice;
+  }
+  spawnBlock(state, tutState = null, isInit = false, isTutorial = false) {
+    if (!isInit) { state.blockCount += 1; state.rareCountdown -= 1; }
+    if (!state.nextBlockData) state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    let data = (isTutorial && tutState) ? BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id))[tutState.blockIndex % BLOCKS.filter(b => !RARE_BLOCK_IDS.includes(b.shape_id)).length] : state.nextBlockData;
+    if (isTutorial && tutState) tutState.blockIndex += 1;
+    state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    if (!isTutorial && RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) state.rareCountdown = Math.floor(Math.random() * 5) + 28;
+    this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline;
+    const maxDx = Math.max(...this.shape.map(([dx]) => dx));
+    this.x = isTutorial ? Math.floor((MAP_WIDTH - maxDx) / 2) : Math.floor(Math.random() * (MAP_WIDTH - maxDx - 2)) + 1;
+    this.y = 0; this.timer = 0;
+  }
+  getCells() { return this.shape.map(([dx,dy]) => [this.x + dx, this.y + dy]); }
+  getGhostCells(state) {
+    let ghostY = this.y; while (!checkCollision(state, this, this.x, ghostY + 1)) ghostY++;
+    if (ghostY === this.y) return []; return this.shape.map(([dx,dy]) => [this.x + dx, ghostY + dy]);
+  }
+  rotateLeft(state) {
+    let ns = this.shape.map(([dx,dy]) => [dy, -dx]);
+    const minX = Math.min(...ns.map(([dx]) => dx)), minY = Math.min(...ns.map(([,dy]) => dy));
+    ns = ns.map(([dx,dy]) => [dx - minX, dy - minY]); if (!this._collides(state, ns)) this.shape = ns;
+  }
+  _collides(state, shape) {
+    for (const [dx,dy] of shape) {
+      const tx = this.x + dx, ty = this.y + dy;
+      if (tx < 0 || tx >= MAP_WIDTH || ty >= MAP_HEIGHT) return true;
+      if (ty >= 0 && state.blockMap[ty][tx] >= 1) return true;
+    }
+    return false;
+  }
+}
+
+// ============================================================
+// 衝突・更新判定ロジック
+// ============================================================
+function checkCollision(state, fb, nx, ny) {
+  for (const [dx,dy] of fb.shape) {
+    const tx = nx + dx, ty = ny + dy;
+    if (tx < 0 || tx >= MAP_WIDTH || ty >= MAP_HEIGHT) return true;
+    if (ty >= 0 && state.blockMap[ty][tx] >= 1) return true;
+  }
+  return false;
+}
+
+function lockBlock(state, fb) {
+  const mapValue = fb.shapeId * 1000 + state.nextSerial;
+  for (const [gx,gy] of fb.getCells()) { if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT) state.blockMap[gy][gx] = mapValue; }
+  state.nextSerial += 1;
+}
+
+function checkLineClear(state, countCombo = true) {
+  let existingRows = new Set(state.lineClearQueue); let newFullRows = [];
+  for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+    if (!state.blockMap[y].includes(0) && !existingRows.has(y) && !state.blockMap[y].includes(9999)) newFullRows.push(y);
+  }
+  if (newFullRows.length === 0) return;
+  if (countCombo) {
+    let lines = newFullRows.length; if (state.comboTimer <= 0) state.comboTotalLines = 0;
+    state.comboTotalLines += lines; let prevCount = state.comboCount; state.comboCount = state.comboTotalLines - 1; state.comboTimer = COMBO_BUFFER_FRAMES;
+    if (state.comboCount - prevCount > 0) { state.comboEverActivated = true; state.pendingComboBlocks += (state.comboCount - prevCount); }
+    if (!bossSys.isBossActive) {
+      let prevBonus = Math.floor(Math.max(prevCount - 1, 0) / 4), newBonus = Math.floor(Math.max(state.comboCount - 1, 0) / 4);
+      if (newBonus > prevBonus) state.floor += (newBonus - prevBonus); capFloorAtBoss(state);
+    }
+  }
+  for (let row of newFullRows) state.lineClearQueue.push(row);
+}
+
+function enqueueNewFullRows(state) {
+  const existingRows = new Set(state.lineClearQueue);
+  for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+    if (!state.blockMap[y].includes(0) && !existingRows.has(y)) state.lineClearQueue.push(y);
+  }
+}
+
+function processLineClearQueue(state) {
+  if (state.lineClearQueue.length === 0) return;
+  state.lineClearTimer += 1; if (state.lineClearTimer < LINE_CLEAR_INTERVAL) return;
+  state.lineClearTimer = 0; let row = state.lineClearQueue.shift();
+  if (state.blockMap[row].includes(0)) { enqueueNewFullRows(state); return; }
+  for (let ty = row; ty > 0; ty--) state.blockMap[ty] = [...state.blockMap[ty - 1]];
+  state.blockMap[0] = new Array(MAP_WIDTH).fill(0); state.score += SCORE_PER_LINE;
+  state.lineClearQueue = state.lineClearQueue.map(r => r < row ? r - 1 : r);
+  enqueueNewFullRows(state);
+
+  if (bossSys.isBossActive && scene === "boss_10f") {
+    bossSys.bossHp -= 1;
+    if (bossSys.bossHp <= 0) {
+      bossSys.isBossActive = false; scene = "game"; player.hp = MAX_HP; teleportPlayer(player);
+      player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      bossSys.restorePreviousMap(state); bossSys.cursedBeamActive = true; state.floor = 11; state.notifiedFloor = 11;
+      flushLineClearQueue(state, false);
+    }
+  } else {
+    state.floorLines += 1; if (state.floorLines >= LINES_PER_FLOOR) { state.floor += 1; state.floorLines = 0; capFloorAtBoss(state); }
+  }
+}
+
+function applyGravityPushOnly(state, fb) {
+  if (scene === "boss_20f" || scene === "boss_40f" || state.pushedBlockIds.size === 0) return;
+  state.pushGravityTimer += 1; const interval = state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
+  if (state.pushGravityTimer < interval) return;
+  state.pushGravityTimer = 0;
+  const fbCells = new Set(fb.getCells().map(c => `${c[0]},${c[1]}`)); const blockCache = state.getBlockCache();
+  let existingIds = new Set(); state.pushedBlockIds.forEach(id => { if (blockCache[id]) existingIds.add(id); });
+  state.pushedBlockIds = existingIds; if (state.pushedBlockIds.size === 0) return;
+  let settledIds = new Set(), sortedIds = Array.from(state.pushedBlockIds).sort((a,b)=>a-b);
+  for (let blockId of sortedIds) {
+    if (is_fixed_terrain(blockId) || blockId === 9999) { settledIds.add(blockId); continue; }
+    let cells = blockCache[blockId], canDrop = true;
+    for (let [cx, cy] of cells) {
+      let ny = cy + 1; if (ny >= MAP_HEIGHT) { canDrop = false; break; }
+      if ((state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId) || fbCells.has(`${cx},${ny}`)) { canDrop = false; break; }
+    }
+    if (canDrop && cells.length > 0) {
+      cells.sort((a,b) => b[1] - a[1]).forEach(([cx, cy]) => { state.blockMap[cy + 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+    } else settledIds.add(blockId);
+  }
+  let movedIds = new Set(Array.from(state.pushedBlockIds).filter(id => !settledIds.has(id)));
+  movedIds.forEach(blockId => {
+    let cells = blockCache[blockId] || [], topCells = {};
+    for (const [cx, cy] of cells) { if (!(cx in topCells) || cy < topCells[cx]) topCells[cx] = cy; }
+    for (const cx in topCells) {
+      let ay = topCells[cx] - 1; if (ay >= 0) { let aboveId = state.blockMap[ay][cx]; if (aboveId >= 1 && aboveId !== blockId) state.pushedBlockIds.add(aboveId); }
+    }
+  });
+  settledIds.forEach(id => state.pushedBlockIds.delete(id));
+  if (movedIds.size > 0) fb.timer = interval; if (settledIds.size > 0) checkLineClear(state, true);
+}
+
+function useComboBlock(state, fb) {
+  if (state.comboBlocks <= 0 || scene.startsWith("boss_")) return;
+  for (let gaps = 1; gaps < MAP_WIDTH; gaps++) {
+    for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+      if (state.blockMap[y].includes(9999)) continue;
+      let emptyCols = []; for (let x=0; x<MAP_WIDTH; x++) if (state.blockMap[y][x] === 0) emptyCols.push(x);
+      if (emptyCols.length === gaps) {
+        let px = emptyCols[Math.floor(emptyCols.length / 2)], mapValue = 1 * 1000 + state.nextSerial;
+        state.blockMap[y][px] = mapValue; state.nextSerial += 1; state.comboBlocks -= 1; checkLineClear(state, false); return;
+      }
+    }
+  }
+}
+
+function teleportPlayer(p) { p.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); p.y = GAME_TOP + 100; p.vy = 0; p.isGrounded = false; }
+function teleportPlayerBoss20(p) { p.x = GAME_LEFT + 8 * GRID_SIZE; p.y = GAME_BOTTOM - P_HALF_H; p.vy = 0; p.isGrounded = false; }
+
+function applyPlayerDamage(p) {
+  p.hp = Math.max(0, p.hp - 1); p.invincible = INVINCIBLE_FRAMES;
+  if (p.hp <= 0) scene = "gameover";
+  else if (scene === "boss_20f" || scene === "boss_40f") teleportPlayerBoss20(p);
+  else teleportPlayer(p);
+}
+
+function checkCrush(state, fb, p) {
+  if (p.invincible > 0 || !p.isGrounded) return;
+  const headGy = Math.floor((p.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const lx = Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rx = Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const fbCells = (scene === "boss_20f" || scene === "boss_40f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+  for (const cx of [lx, rx]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    if (fbCells.has(`${cx},${headGy}`) || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999)) {
+      applyPlayerDamage(p); break;
+    }
+  }
+}
+
+function checkCrushHarddrop(state, p) {
+  if (p.invincible > 0) return;
+  const checkXs = [Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE), Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE)];
+  const checkYs = [Math.floor((p.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE), Math.floor((p.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)];
+  for (const cy of checkYs) for (const cx of checkXs) {
+    if (cx >= 0 && cx < MAP_WIDTH && cy >= 0 && cy < MAP_HEIGHT && state.blockMap[cy][cx] >= 1 && state.blockMap[cy][cx] !== 9999) {
+      applyPlayerDamage(p); return;
+    }
+  }
+}
+
+function checkBoss20fGoal(state, p) {
+  const corners = [
+    [p.x - P_HALF_W + 2, p.y - P_HALF_H + 2], [p.x + P_HALF_W - 2, p.y - P_HALF_H + 2],
+    [p.x - P_HALF_W + 2, p.y + P_HALF_H - 2], [p.x + P_HALF_W - 2, p.y + P_HALF_H - 2]
+  ];
+  for (const [px, py] of corners) {
+    let gx = Math.floor((px - GAME_LEFT) / GRID_SIZE), gy = Math.floor((py - GAME_TOP) / GRID_SIZE);
+    if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT && state.blockMap[gy][gx] === 9999) return true;
+  }
+  return false;
+}
+
+function updateBeam(beam, player, forcedCycle = null) {
+  if (scene === "boss_20f" || scene === "boss_40f") { beam.timer = 0; beam.phase = "wait"; return; }
+  const currentCycle = forcedCycle !== null ? forcedCycle : getBeamCycle(state.floor);
+  if (currentCycle === Infinity && !bossSys.isBossActive) { beam.timer = 0; beam.phase = "wait"; return; }
+  let cycle = (bossSys.isBossActive && !bossSys.cursedBeamActive) ? 600 : currentCycle;
+  beam.timer += 1;
+  if (beam.phase === "wait" && beam.timer >= cycle - BEAM_WARNING) {
+    beam.phase = "warning"; let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+    beam.col = Math.max(0, Math.min(MAP_WIDTH - BEAM_WIDTH, pGx - Math.floor(BEAM_WIDTH / 2)));
+  }
+  if (beam.phase === "warning") beam.blinkOn = (Math.floor(beam.timer / 8) % 2 === 0);
+  if (beam.phase === "warning" && beam.timer >= cycle) { beam.phase = "firing"; beam.showTimer = BEAM_SHOW_FRAMES; beam.timer = 0; }
+  if (beam.phase === "firing") {
+    beam.showTimer -= 1;
+    if (player.invincible === 0) {
+      let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+      if (beam.col <= pGx && pGx < beam.col + BEAM_WIDTH) applyPlayerDamage(player);
+    }
+    if (beam.showTimer <= 0) beam.phase = "wait";
+  }
+}
+
+function updateBlockMove(state, fb, bms) {
+  if (scene === "boss_20f" || scene === "boss_40f") return;
+  if (bms.leftHeld === bms.rightHeld) { bms.holdFrames = 0; bms.repeatAcc = 0; return; }
+  const dir = bms.leftHeld ? -1 : 1;
+  if (bms.holdFrames === 0 || (bms.holdFrames >= BLOCK_MOVE_INITIAL_DELAY && ++bms.repeatAcc >= BLOCK_MOVE_REPEAT_DELAY)) {
+    if (bms.holdFrames > 0) bms.repeatAcc = 0; if (!checkCollision(state, fb, fb.x + dir, fb.y)) fb.x += dir;
+  }
+  bms.holdFrames += 1;
+}
+
+function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
+  if (scene === "boss_20f" || scene === "boss_40f") return;
+  const interval = state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
+  fb.timer += 1; if (fb.timer < interval) return;
+  fb.timer = 0;
+  if (!checkCollision(state, fb, fb.x, fb.y + 1)) fb.y += 1;
+  else { lockBlock(state, fb); fb.spawnBlock(state, tutState, false, isTutorial); checkLineClear(state, true); }
+}
+
+function isSolidAll(state, fb, gx, gy) {
+  if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
+  if (state.blockMap[gy][gx] === 9999) return false;
+  if (state.blockMap[gy][gx] >= 1) return true;
+  if (scene === "boss_20f" || scene === "boss_40f") return false;
+  for (const [fx,fy] of fb.getCells()) { if (fx === gx && fy === gy) return true; }
+  return false;
+}
+
+function updatePlayer(state, fb, player) {
+  const ks = state.keyStates; player.vx = 0;
+  if (ks.a && ks.d) player.vx = (state.lastHkey === "a") ? -MOVE_SPEED : MOVE_SPEED;
+  else if (ks.a) player.vx = -MOVE_SPEED; else if (ks.d) player.vx = MOVE_SPEED;
+
+  const upperY = Math.floor((player.y - (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const lowerY = Math.floor((player.y + (P_HALF_H - 1) - GAME_TOP) / GRID_SIZE);
+  const nextLx = Math.floor((player.x + player.vx - (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  const nextRx = Math.floor((player.x + player.vx + (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  let hittingBlock = false, blockCache = null;
+
+  for (const gridY of [upperY, lowerY]) {
+    if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
+    if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999) {
+      hittingBlock = true; let targetId = state.blockMap[gridY][nextLx];
+      if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
+      if (!blockCache) blockCache = state.getBlockCache();
+      let cells = blockCache[targetId] || [];
+      let canPush = cells.every(([cx,cy]) => cx - 1 >= 0 && (state.blockMap[cy][cx-1] === 0 || state.blockMap[cy][cx-1] === targetId));
+      player.pushTimerR = 0;
+      if (canPush) {
+        player.pushTimerL += 1;
+        if (player.pushTimerL >= PUSH_DELAY) {
+          cells.sort((a,b) => a[0]-b[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx-1] = targetId; state.blockMap[cy][cx] = 0; });
+          player.pushTimerL = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
+        } else player.vx = 0;
+      } else player.vx = 0;
+      break;
+    }
+    if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999) {
+      hittingBlock = true; let targetId = state.blockMap[gridY][nextRx];
+      if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
+      if (!blockCache) blockCache = state.getBlockCache();
+      let cells = blockCache[targetId] || [];
+      let canPush = cells.every(([cx,cy]) => cx + 1 < MAP_WIDTH && (state.blockMap[cy][cx+1] === 0 || state.blockMap[cy][cx+1] === targetId));
+      player.pushTimerL = 0;
+      if (canPush) {
+        player.pushTimerR += 1;
+        if (player.pushTimerR >= PUSH_DELAY) {
+          cells.sort((a,b) => b[0]-a[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx+1] = targetId; state.blockMap[cy][cx] = 0; });
+          player.pushTimerR = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
+        } else player.vx = 0;
+      } else player.vx = 0;
+      break;
+    }
+  }
+
+  player.x += player.vx; if (!hittingBlock) { player.pushTimerL = 0; player.pushTimerR = 0; }
+  player.x = Math.max(GAME_LEFT + P_HALF_W, Math.min(GAME_RIGHT - P_HALF_W, player.x));
+
+  if (!player.isGrounded) player.vy += GRAVITY;
+  else { player.vy = 0; if (ks.w) { player.vy = JUMP_SPEED; player.isGrounded = false; } }
+  player.y += player.vy; player.isGrounded = false;
+
+  const lfootX = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rfootX = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const headGy = Math.floor((player.y - P_HALF_H - GAME_TOP) / GRID_SIZE);
+  const footGy = Math.floor((player.y + P_HALF_H - GAME_TOP) / GRID_SIZE);
+
+  for (const cx of [lfootX, rfootX]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    if (player.vy >= 0 && footGy >= 0 && footGy < MAP_HEIGHT && isSolidAll(state, fb, cx, footGy)) { player.y = footGy * GRID_SIZE + GAME_TOP - P_HALF_H; player.isGrounded = true; break; }
+    if (player.vy < 0 && headGy >= 0 && headGy < MAP_HEIGHT && isSolidAll(state, fb, cx, headGy)) { player.y = (headGy + 1) * GRID_SIZE + GAME_TOP + P_HALF_H; player.vy = 0; break; }
+  }
+  if (player.y > GAME_BOTTOM - P_HALF_H) { player.y = GAME_BOTTOM - P_HALF_H; player.isGrounded = true; }
+
+  // 20F
+  if (scene === "boss_20f" && checkBoss20fGoal(state, player)) {
+    bossSys.isBossActive = false; bossSys.targetReached = true; scene = "game"; player.hp = MAX_HP;
+    teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
+    state.floor = 21; state.floorLines = 0; state.notifiedFloor = 21; flushLineClearQueue(state, false);
+  }
+
+  if (player.invincible > 0) { player.invincible -= 1; player.blinkVisible = (Math.floor(player.invincible / 6) % 2 === 0); }
+  else player.blinkVisible = true;
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function drawNextBlock(ctx, state) {
+  if (!state.nextBlockData) return;
+  const mapLeftX = GAME_RIGHT + 80; const mapRightX = SCREEN_WIDTH - 80; const mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
+  const areaTop = GAME_TOP + 20; const areaH = 180;
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("NEXT", mapCenterX, areaTop + 35);
+
+  const ndata = state.nextBlockData; const cellSize = 32;
+  const minDx = Math.min(...ndata.shape.map(([dx]) => dx)), minDy = Math.min(...ndata.shape.map(([,dy]) => dy));
+  const maxDx = Math.max(...ndata.shape.map(([dx]) => dx)), maxDy = Math.max(...ndata.shape.map(([,dy]) => dy));
+  const blockW = (maxDx - minDx + 1) * cellSize, blockH = (maxDy - minDy + 1) * cellSize;
+  const originX = mapCenterX - blockW / 2 - minDx * cellSize, originY = areaTop + 50 + (areaH - 50 - blockH) / 2 - minDy * cellSize;
+
+  if (scene !== "boss_20f" && scene !== "boss_40f") {
+    for (const [dx, dy] of ndata.shape) {
+      ctx.fillStyle = ndata.color; ctx.fillRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
+      ctx.strokeStyle = ndata.outline; ctx.lineWidth = 1; ctx.strokeRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
+    }
+  }
+  ctx.strokeStyle = "#555555"; ctx.lineWidth = 1; ctx.strokeRect(mapLeftX, areaTop, mapRightX - mapLeftX, areaH);
+
+  if (scene.startsWith("boss_")) {
+    const placeholderTop = areaTop + areaH + 40; ctx.fillStyle = "#222233"; ctx.fillRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
+    ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
+    ctx.fillStyle = "white"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+    let bossFile = scene === "boss_10f" ? "boss10.png" : scene === "boss_20f" ? "boss20.png" : scene === "boss_30f" ? "boss30.png" : "boss40.png";
+    ctx.fillText("[ BOSS STANDING IMAGE ]", mapCenterX, placeholderTop + 145); ctx.fillText(`(assets/${bossFile})`, mapCenterX, placeholderTop + 170);
+  }
+}
+
+function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceBeamActive = false) {
+  if (state.bgAnim && state.bgAnim.active) {
+    ctx.save(); ctx.beginPath(); ctx.rect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP); ctx.clip();
+    ctx.fillStyle = state.bgAnim.color; ctx.font = "bold 130px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(state.bgAnim.text, (GAME_LEFT + GAME_RIGHT) / 2, state.bgAnim.y); ctx.restore();
+  }
+
+  // グリッド
+  ctx.strokeStyle = "#333333"; ctx.lineWidth = 1; ctx.setLineDash([8, 10]);
+  for (let gx = 0; gx <= MAP_WIDTH; gx++) { ctx.beginPath(); ctx.moveTo(GAME_LEFT + gx * GRID_SIZE, GAME_TOP); ctx.lineTo(GAME_LEFT + gx * GRID_SIZE, GAME_BOTTOM); ctx.stroke(); }
+  for (let gy = 0; gy <= MAP_HEIGHT; gy++) { ctx.beginPath(); ctx.moveTo(GAME_LEFT, GAME_TOP + gy * GRID_SIZE); ctx.lineTo(GAME_RIGHT, GAME_TOP + gy * GRID_SIZE); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  // ビーム
+  if (scene !== "boss_20f" && scene !== "boss_40f") {
+    let currentCycle = getBeamCycle(state.floor); if (scene === "boss_10f") currentCycle = 1800;
+    if (forceBeamActive || currentCycle !== Infinity || bossSys.isBossActive) {
+      if (beam.phase === "warning" && beam.blinkOn) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+      if (beam.phase === "firing") {
+        ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE + 4, GAME_TOP, BEAM_WIDTH * GRID_SIZE - 8, GAME_BOTTOM - GAME_TOP);
+      }
+    }
+  }
+
+  // 30F ビーム
+  if (scene === "boss_30f") {
+    if (bossSys.bigBeamPhase === "warning" && Math.floor(bossSys.bigBeamTimer / 4) % 2 === 0) { ctx.fillStyle = "#661111"; ctx.fillRect(GAME_LEFT + GRID_SIZE, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+    if (bossSys.bigBeamPhase === "firing") {
+      ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + GRID_SIZE, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + GRID_SIZE + 6, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE - 12, GAME_BOTTOM - GAME_TOP);
+    }
+  }
+
+  // 40F ビーム
+  if (scene === "boss_40f") {
+    let blink = Math.floor(Date.now() / 130) % 2 === 0;
+    for (let cx of bossSys.boss40ActiveCols) {
+      if (bossSys.boss40LaserPhase === "warning" && blink) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE, GAME_TOP, GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+      else if (bossSys.boss40LaserPhase === "firing") { ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE, GAME_TOP, GRID_SIZE, GAME_BOTTOM - GAME_TOP); ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE + 6, GAME_TOP, GRID_SIZE - 12, GAME_BOTTOM - GAME_TOP); }
+    }
+    for (let cy of bossSys.boss40ActiveRows) {
+      if (bossSys.boss40LaserPhase === "warning" && blink) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT, GAME_TOP + cy * GRID_SIZE, GAME_RIGHT - GAME_LEFT, GRID_SIZE); }
+      else if (bossSys.boss40LaserPhase === "firing") { ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT, GAME_TOP + cy * GRID_SIZE, GAME_RIGHT - GAME_LEFT, GRID_SIZE); ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + 6, GAME_TOP + cy * GRID_SIZE + 6, GAME_RIGHT - GAME_LEFT - 12, GRID_SIZE - 12); }
+    }
+  }
+
+  // 盤面ブロック
+  let goalFlash = Math.floor(Date.now() / 250) % 2 === 0;
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      let val = state.blockMap[y][x];
+      if (val === 9999) {
+        ctx.fillStyle = goalFlash ? "#ffff33" : "#cccc00"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = "#ffffbb"; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      } else if (val >= 1) {
+        let col = is_fixed_terrain(val) ? { fill:"gray", outline:"#444444" } : (BLOCK_COLOR_MAP[Math.floor(val / 1000)] || { fill:"#888888", outline:"#444444" });
+        ctx.fillStyle = col.fill; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = col.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      }
+    }
+  }
+
+  // 30F パズルお題オーバーレイ
+  if (scene === "boss_30f" && bossSys.puzzleMap) {
+    let blink = Math.floor(Date.now() / 100) % 2 === 0;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let pval = bossSys.puzzleMap[y][x]; if (pval === 0 || state.blockMap[y][x] >= 1) continue;
+        ctx.save(); ctx.globalAlpha = 0.5;
+        if (pval === PUZZLE_BLUE_ID) { ctx.fillStyle = "#2255ff"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); ctx.strokeStyle = "#77aaff"; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); }
+        else if (pval === PUZZLE_RED_ID) { if (!bossSys.trapActive || blink) { ctx.fillStyle = !bossSys.trapActive ? "#ff2222" : "#ffffff"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); ctx.strokeStyle = "#ff8888"; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); } }
+        ctx.restore();
+      }
+    }
+  }
+
+  // 落下ブロック
+  if (!hideFallingBlock && scene !== "boss_20f" && scene !== "boss_40f") {
+    let gc = fb.getGhostCells(state);
+    if (gc.length > 0) {
+      let gf = darkenColor(fb.color, 0.28), go = darkenColor(fb.outline || fb.color, 0.45), fbc = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+      for (const [gx,gy] of gc) {
+        if (fbc.has(`${gx},${gy}`)) continue; ctx.fillStyle = gf; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+        ctx.strokeStyle = go; ctx.lineWidth = 2; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+      }
+    }
+    for (const [gx,gy] of fb.getCells()) { ctx.fillStyle = fb.color; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); ctx.strokeStyle = fb.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); }
+  }
+
+  // プレイヤー
+  if (player.blinkVisible) {
+    ctx.fillStyle = player.invincible > 0 ? "#ffaaaa" : "lightgreen"; ctx.fillRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(player.x - P_HALF_W, player.y - P_HALF_H, P_HALF_W * 2, P_HALF_H * 2);
+  }
+
+  // 警告
+  if (scene !== "boss_20f" && scene !== "boss_40f" && beam.phase === "warning") {
+    ctx.fillStyle = "#111111"; ctx.fillRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 2; ctx.strokeRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(scene === "boss_10f" ? "⚠ BOSS BEAM INBOUND ⚠" : "⚠ WARNING: BEAM INBOUND ⚠", (GAME_LEFT + GAME_RIGHT) / 2, GAME_TOP + 72);
+  }
+
+  // HUD 左側
+  const cx = Math.floor((40 + GAME_LEFT - 40) / 2); ctx.fillStyle = "white"; ctx.font = "bold 28px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("SCORE", cx, GAME_TOP + 80); ctx.fillText(state.score, cx, GAME_TOP + 120);
+
+  if (scene === "boss_10f") {
+    ctx.fillStyle = "red"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("BOSS HEALTH", cx, GAME_TOP + 240);
+    ctx.fillStyle = "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`${bossSys.bossHp} / 8 LINES`, cx, GAME_TOP + 290);
+  } else if (scene === "boss_20f") {
+    ctx.fillStyle = "yellow"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText("LIMIT TIME", cx, GAME_TOP + 240);
+    ctx.fillStyle = (bossSys.bossTimer < 300) ? "red" : "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`REMAIN: ${(bossSys.bossTimer / 60).toFixed(2)}s`, cx, GAME_TOP + 290);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("右上の黄色いゴールへ到達せよ！", cx, GAME_TOP + 400); ctx.fillText("【クリア特典】 HP全回復", cx, GAME_TOP + 430);
+  } else if (scene === "boss_30f") {
+    ctx.fillStyle = "red"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("BOSS HEALTH", cx, GAME_TOP + 210);
+    ctx.fillStyle = "white"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`${bossSys.bossHp} / 3 SECTIONS`, cx, GAME_TOP + 250);
+    ctx.fillStyle = "yellow"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("LIMIT TIME", cx, GAME_TOP + 300);
+    ctx.fillStyle = "white"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`REMAIN: ${(bossSys.boss30Timer / 60).toFixed(2)}s`, cx, GAME_TOP + 340);
+    if (bossSys.trapActive) { ctx.fillStyle = "#ff3333"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("⚠ TRAP ARMED ⚠", cx, GAME_TOP + 400); ctx.fillText(`${(bossSys.trapTimer / 60).toFixed(2)}s`, cx, GAME_TOP + 440); }
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.fillText("青マスをお題通りに埋めろ！", cx, GAME_TOP + 540); ctx.fillText("赤マスを埋めると罠ビーム発動", cx, GAME_TOP + 570); ctx.fillText("安全地帯は左右両端のみ", cx, GAME_TOP + 600);
+  } else if (scene === "boss_40f") {
+    ctx.fillStyle = "yellow"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText("SURVIVAL TIME", cx, GAME_TOP + 240);
+    ctx.fillStyle = "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`SURVIVE: ${(bossSys.bossTimer / 60).toFixed(2)}s`, cx, GAME_TOP + 290);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("複合レーザーの猛攻を耐え抜け！", cx, GAME_TOP + 400); ctx.fillText("60秒間生存でクリア", cx, GAME_TOP + 430);
+  }
+
+  if (!scene.startsWith("boss_") && state.comboEverActivated) {
+    if (state.comboCount >= 1) { ctx.fillStyle = "#ff4400"; ctx.font = "bold 40px 'DotGothic16', sans-serif"; ctx.fillText(`${state.comboCount} COMBO!!`, cx, GAME_TOP + 260); }
+    ctx.fillStyle = "#ffcc00"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("COMBO BLOCKS", cx, GAME_TOP + 340);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 64px 'DotGothic16', sans-serif"; ctx.fillText(`${state.comboBlocks}`, cx, GAME_TOP + 410);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("[E] コンボブロック使用", cx, GAME_TOP + 570);
+  } else if (!scene.startsWith("boss_")) {
+    ctx.fillStyle = "#aaaaaa"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
+    let ct = ["CONTROLS","", "[A]/[D]: プレイヤー移動", "[W]: ジャンプ", "[↓]: ブロック加速", "[←]/[→]: ブロック移動", "[Space]: 回転", "[Esc]: ポーズ"];
+    ct.forEach((l, i) => ctx.fillText(l, cx, GAME_TOP + 240 + i * 22));
+  }
+
+  const hpY = GAME_BOTTOM - 120; ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", cx, hpY - 40);
+  for (let i = 0; i < MAX_HP; i++) { let sx = cx - (MAX_HP - 1) * 25; ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+
+  // HUD 右側 (階層マップ)
+  const mapLeftX = GAME_RIGHT + 80, mapRightX = SCREEN_WIDTH - 80, mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
+  const baseY = 960, floorGap = 140, startF = Math.max(1, state.floor - 1), endF = startF + 5;
+  for (let f = startF; f <= endF; f++) {
+    const fy = baseY - (f - startF) * floorGap; if (fy < GAME_TOP + 230) continue;
+    let lineCol = f === state.floor ? "yellow" : "#444444", textCol = f === state.floor ? "yellow" : "gray";
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mapLeftX + 80, fy); ctx.lineTo(mapRightX - 100, fy); ctx.stroke();
+    ctx.fillStyle = textCol; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.textAlign = "left";
+    let fText = f === 10 ? "10F(BOSS)" : f === 20 ? "20F(BOSS)" : f === 30 ? "30F(BOSS)" : f === 40 ? "40F(BOSS)" : `${f} F`;
+    ctx.fillText(fText, mapLeftX + 30, fy + 8);
+    if (f === state.floor) {
+      ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.textAlign = "right"; ctx.fillText("◆ NOW", mapRightX - 40, fy + 5);
+    }
+  }
+
+  drawNextBlock(ctx, state);
+  ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "cyan"; ctx.lineWidth = 1; ctx.strokeRect(40, GAME_TOP, GAME_LEFT - 80, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.strokeRect(GAME_RIGHT + 40, GAME_TOP, SCREEN_WIDTH - GAME_RIGHT - 80, GAME_BOTTOM - GAME_TOP);
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const paragraphs = text.split("\n"); const totalLines = paragraphs.length; const startY = y - ((totalLines - 1) * lineHeight) / 2;
+  paragraphs.forEach((line, i) => ctx.fillText(line, x, startY + i * lineHeight));
+}
+
+function tutDrawOverlay(ctx, tutState, width, height, gameLeft, gameTop, gameRight, gameBottom) {
+  const sd = tutState.currentStepData(); if (!sd) return; const cx = width / 2;
+  if (sd.highlight === "ui" && Math.floor(tutState.stepTimer / 20) % 2 === 0) {
+    ctx.strokeStyle = "yellow"; ctx.lineWidth = 6; ctx.strokeRect(40, gameTop, gameLeft - 80, gameBottom - gameTop); ctx.strokeRect(gameRight + 40, gameTop, width - gameRight - 80, gameBottom - gameTop);
+  } else if (sd.highlight === "warning") { ctx.strokeStyle = "yellow"; ctx.lineWidth = 4; ctx.setLineDash([10, 10]); ctx.strokeRect(cx - 300, gameTop + 20, 600, 90); ctx.setLineDash([]); }
+  else if (sd.highlight === "player") { ctx.strokeStyle = "#00ff88"; ctx.lineWidth = 4; ctx.setLineDash([12, 8]); ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, gameBottom - gameTop); ctx.setLineDash([]); }
+  else if (sd.highlight === "block") { ctx.strokeStyle = "#ffaa00"; ctx.lineWidth = 4; ctx.setLineDash([12, 8]); ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, 200); ctx.setLineDash([]); }
+
+  const panelW = 820, panelH = 170, panelX0 = cx - panelW / 2, panelY0 = gameTop + 130, panelY1 = panelY0 + panelH;
+  ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(panelX0, panelY0, panelW, panelH);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 2; ctx.strokeRect(panelX0, panelY0, panelW, panelH);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "left"; ctx.fillText(`STEP ${sd.step} / ${TUTORIAL_STEPS.length}`, panelX0 + 16, panelY0 + 24);
+
+  let showPrompt = !tutState.started || tutState.isCleared;
+  let promptText = !tutState.started ? "▶ FキーでOK" : sd.condition_type === "wait_input" ? "▶ Fキーで次へ" : "▶ 達成！ Fキーで次へ";
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  wrapText(ctx, sd.text, cx, panelY0 + panelH / 2 - (showPrompt ? 18 : 0), panelW - 40, 24);
+  if (showPrompt) { ctx.fillStyle = "#ffff00"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText(promptText, cx, panelY1 - 18); }
+}
+
+function drawTitle(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#334455"; ctx.lineWidth = 2; ctx.strokeRect(cx - 480, 60, 960, H - 120);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 72px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GRID TOWER", cx, 230);
+  ctx.fillStyle = "#aaaacc"; ctx.font = "24px 'DotGothic16', sans-serif"; ctx.fillText("～目指せ100F～", cx, 300);
+  const btnW = 400, btnH = 70, gap = 30, startY = (H - (4 * btnH + 3 * gap)) / 2 + 80;
+  const buttons = [["PLAY", "#22aa55", "#ffffff", "btn_play"],["HARD MODE (未実装)", "#444444", "#aaaaaa", "btn_hard"],["TUTORIAL", "#225588", "#ffffff", "btn_tutorial"],["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function drawPause(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, W, H);
+  const pw = 500, ph = 520, px0 = cx - pw / 2, py0 = H / 2 - ph / 2; ctx.fillStyle = "#1a1a2e"; ctx.fillRect(px0, py0, pw, ph);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 3; ctx.strokeRect(px0, py0, pw, ph);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 48px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("PAUSE", cx, py0 + 90);
+  const btnW = 360, btnH = 65, gap = 20, startY = py0 + 160;
+  const buttons = [["RESUME", "#22aa55", "#ffffff", "btn_resume"],["RETRY", "#cc8800", "#ffffff", "btn_retry_pause"],["HOME", "#225588", "#ffffff", "btn_home_pause"],["QUIT GAME", "#553333", "#ffaaaa", "btn_quit_pause"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 9);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function drawGameover(ctx, score, floorReached) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "#0d0000"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ff2200"; ctx.font = "bold 80px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", cx, H / 2 - 230);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 36px 'DotGothic16', sans-serif"; ctx.fillText(`SCORE  :  ${score}`, cx, H / 2 - 110);
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "28px 'DotGothic16', sans-serif"; ctx.fillText(`FLOOR REACHED  :  ${floorReached} F`, cx, H / 2 - 50);
+  const btnW = 400, btnH = 70, gap = 24, startY = H / 2 + 50;
+  const buttons = [["RETRY", "#cc4400", "#ffffff", "btn_retry_go"],["HOME", "#225588", "#ffffff", "btn_home_go"],["QUIT GAME", "#333333", "#aaaaaa", "btn_quit_go"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 28px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function hitBtn(tag, cx, cy) { if (!_btnRects[tag]) return false; let r = _btnRects[tag]; return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h; }
+
+function quitGame() {
+  scene = "quit";
+  try { window.close(); } catch (e) { /* ブラウザによっては閉じられない */ }
+}
+
+function drawQuit(ctx) {
+  ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 40px 'DotGothic16', sans-serif";
+  ctx.fillText("プレイありがとうございました", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "22px 'DotGothic16', sans-serif";
+  ctx.fillText("このタブを閉じてゲームを終了してください", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 30);
+}
+
+// ============================================================
+// メインループ ＆ イベント
+// ============================================================
+let state, tutState, fb, player, beam, bms;
+function resetGame() {
+  state = new GameState(); tutState = new TutorialState(); fb = new FallingBlock(); player = new Player(); beam = new BeamState(); bms = new BlockMoveState(); bossSys.reset_all();
+}
+resetGame();
+
+const canvas = document.getElementById("gameCanvas"); const ctx = canvas.getContext("2d");
+let _lastTime = null, _accumulator = 0;
+
+function mainProc(timestamp) {
+  requestAnimationFrame(mainProc); if (_lastTime === null) _lastTime = timestamp;
+  _accumulator += timestamp - _lastTime; _lastTime = timestamp;
+  if (_accumulator < 16.66) return; _accumulator = 0;
+
+  ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  if (scene === "title") drawTitle(ctx);
+  else if (scene === "quit") drawQuit(ctx);
+  else if (sceneover(scene)) drawGameover(ctx, state.score, state.floor);
+  else if (scene === "pause") { drawGame(ctx, state, fb, player, beam); drawPause(ctx); }
+  else {
+    const isTut = (scene === "tutorial"); let tutorialPaused = false, blockFrozen = false, isBeamStep = false;
+    if (isTut) {
+      if (tutState._needsSetup) tutSetupStep(tutState, state, player, fb, beam);
+      let sd = tutState.currentStepData();
+      if (sd) { if (sd.condition_type !== "beam_evade") beam.timer = 0; else { isBeamStep = true; if (beam.phase === "firing" && beam.showTimer === 1) tutState.flags.beam_fired = true; } }
+      tutorialPaused = tutState.isWaitingForAck(); blockFrozen = tutState.isBlockFrozen();
+    }
+
+    if (!tutorialPaused) {
+      if (state.downDoubleTapTimer > 0) state.downDoubleTapTimer--;
+      if (state.comboTimer > 0 && --state.comboTimer <= 0) { if (state.pendingComboBlocks > 0) { state.comboBlocks += state.pendingComboBlocks; state.pendingComboBlocks = 0; } state.comboTimer = 0; state.comboCount = 0; state.comboTotalLines = 0; }
+      
+      // ボス空間移行判定
+      if (state.floor === 10 && !bossSys.isBossActive && scene === "game" && !bossSys.cursedBeamActive) { flushLineClearQueue(state); bossSys.generateBossStage(state, 10); scene = "boss_10f"; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0; }
+      else if (state.floor === 20 && !bossSys.isBossActive && scene === "game" && !bossSys.targetReached) { flushLineClearQueue(state); bossSys.generateBossStage(state, 20); scene = "boss_20f"; teleportPlayerBoss20(player); player.invincible = INVINCIBLE_FRAMES; }
+      else if (state.floor === 30 && !bossSys.isBossActive && scene === "game" && !bossSys.boss30Cleared) { flushLineClearQueue(state); bossSys.generateBossStage(state, 30); scene = "boss_30f"; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; }
+      else if (state.floor === 40 && !bossSys.isBossActive && scene === "game") { flushLineClearQueue(state); bossSys.generateBossStage(state, 40); scene = "boss_40f"; teleportPlayerBoss20(player); player.invincible = INVINCIBLE_FRAMES; }
+
+      // ボス固有更新処理
+      if (scene === "boss_20f") { bossSys.bossTimer--; if (bossSys.bossTimer <= 0) scene = "gameover"; }
+      else if (scene === "boss_30f") {
+        let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+        let res = bossSys.update_boss30_logic(state, pGx, player.invincible);
+        if (res === "damage") { applyPlayerDamage(player); bossSys.reset_30f_round(state); flushLineClearQueue(state, false); }
+        else if (res === "victory") { bossSys.isBossActive = false; bossSys.boss30Cleared = true; scene = "game"; player.hp = MAX_HP; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state); state.floor = 31; state.floorLines = 0; state.notifiedFloor = 31; flushLineClearQueue(state, false); }
+        else if (res === "advance") flushLineClearQueue(state, false);
+      } else if (scene === "boss_40f") {
+        let res = bossSys.update_boss40_logic(player);
+        if (res === "clear") { bossSys.isBossActive = false; scene = "game"; player.hp = MAX_HP; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state); state.floor = 41; state.floorLines = 0; state.notifiedFloor = 41; flushLineClearQueue(state, false); }
+        if (bossSys.boss40LaserPhase === "firing" && player.invincible === 0) {
+          let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE), pGy = Math.floor((player.y - GAME_TOP) / GRID_SIZE);
+          if (bossSys.boss40ActiveCols.includes(pGx) || bossSys.boss40ActiveRows.includes(pGy)) applyPlayerDamage(player);
+        }
+      }
+
+      // 階層背景演出
+      if (state.floor > state.notifiedFloor && state.comboTimer <= 0 && state.lineClearQueue.length === 0 && !scene.startsWith("boss_")) {
+        state.notifiedFloor = state.floor; let colors = ["hsla(0,40%,25%,0.4)","hsla(120,40%,25%,0.4)","hsla(210,40%,25%,0.4)"];
+        state.bgAnim = { active: true, y: GAME_TOP - 150, text: `${state.floor}${getOrdinal(state.floor)} FLOOR`, color: colors[Math.floor(Math.random()*colors.length)] };
+      }
+      if (state.bgAnim && state.bgAnim.active) { state.bgAnim.y += 4; if (state.bgAnim.y > GAME_BOTTOM + 200) state.bgAnim.active = false; }
+
+      processLineClearQueue(state); updateBlockMove(state, fb, bms);
+      if (!blockFrozen) updateFallingBlock(state, fb, isTut, isTut ? tutState : null);
+      updatePlayer(state, fb, player); applyGravityPushOnly(state, fb); checkCrush(state, fb, player);
+      updateBeam(beam, player, isBeamStep ? 1800 : null);
+    }
+    if (isTut) tutCheckStepCondition(tutState, state, player, fb, beam);
+    drawGame(ctx, state, fb, player, beam, blockFrozen, isBeamStep);
+    if (isTut) tutDrawOverlay(ctx, tutState, SCREEN_WIDTH, SCREEN_HEIGHT, GAME_LEFT, GAME_TOP, GAME_RIGHT, GAME_BOTTOM);
+  }
+}
+
+function sceneover(s) { return s === "gameover"; }
+
+function getKey(code) {
+  const map = { "KeyW":"w","KeyA":"a","KeyS":"s","KeyD":"d","KeyE":"e","ArrowLeft":"left","ArrowRight":"right","ArrowDown":"down","ArrowUp":"up","Space":"space","Escape":"escape","KeyF":"f" };
+  return map[code] || code.toLowerCase().replace("key","");
+}
+
+document.addEventListener("keydown", e => {
+  const sym = getKey(e.code); if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
+  if (scene === "title" || scene === "gameover" || scene === "quit") return;
+  if (scene === "pause") { if (sym === "escape") scene = prevScene; return; }
+  if (sym === "escape") { prevScene = scene; scene = "pause"; return; }
+
+  if (scene === "tutorial") {
+    let sd = tutState.currentStepData(); if (!sd) return;
+    if (!tutState.started) { if (sym === "f") { tutState.started = true; if (sd.condition_type === "wait_input") tutState.setCleared(); } return; }
+    if (tutState.isCleared && sym === "f") { tutState.advance(); if (!tutState.currentStepData()) { resetGame(); scene = "game"; } else tutSetupStep(tutState, state, player, fb, beam); return; }
+    if (sd.allowed_keys && !sd.allowed_keys.includes("all") && !sd.allowed_keys.includes(sym)) return;
+    if (sym === "w") tutState.flags.jumped = true; if (sym === "space") tutState.flags.rotated = true;
+  }
+
+  if (sym === "e") { useComboBlock(state, fb); return; }
+  if (sym === "down" && !state.keyStates.down && scene !== "boss_20f" && scene !== "boss_40f") {
+    if (state.downDoubleTapTimer > 0) {
+      if (++state.downPressCount >= 2) {
+        while (!checkCollision(state, fb, fb.x, fb.y + 1)) fb.y++;
+        lockBlock(state, fb); fb.spawnBlock(state, scene === "tutorial" ? tutState : null, false, scene === "tutorial");
+        checkLineClear(state, true); checkCrushHarddrop(state, player); state.downPressCount = 0; state.downDoubleTapTimer = 0;
+        if (scene === "tutorial") tutState.flags.hard_dropped = true;
+      }
+    } else { state.downPressCount = 1; state.downDoubleTapTimer = 15; }
+    state.keyStates.down = true; if (scene === "tutorial") tutState.flags.down_pressed = true;
+  }
+  if (sym in state.keyStates) state.keyStates[sym] = true;
+  if (sym === "a" || sym === "d") state.lastHkey = sym;
+  if (sym === "space" && scene !== "boss_20f" && scene !== "boss_40f") fb.rotateLeft(state);
+  if (sym === "left" && scene !== "boss_20f" && scene !== "boss_40f") { if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false; }
+  if (sym === "right" && scene !== "boss_20f" && scene !== "boss_40f") { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
+});
+
+document.addEventListener("keyup", e => {
+  const sym = getKey(e.code); if (sym in state.keyStates) state.keyStates[sym] = false;
+  if (sym === "left") { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  if (sym === "right") { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+});
+
+function getCanvasPos(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * (SCREEN_WIDTH / r.width), y: (e.clientY - r.top) * (SCREEN_HEIGHT / r.height) }; }
+
+canvas.addEventListener("mousedown", e => {
+  e.preventDefault(); const { x, y } = getCanvasPos(e);
+  if (e.button === 0) {
+    if (scene === "title") { if (hitBtn("btn_play", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else if (hitBtn("btn_quit", x, y)) { quitGame(); } return; }
+    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
+    if (scene === "gameover") { if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_home_go", x, y)) scene = "title"; else if (hitBtn("btn_quit_go", x, y)) { quitGame(); } return; }
+    if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false;
+  }
+  if (e.button === 2) { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
+});
+
+canvas.addEventListener("mouseup", e => {
+  if (e.button === 0) { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  if (e.button === 1) state.keyStates.down = false;
+  if (e.button === 2) { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+});
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+function scaleCanvas() { const scale = Math.min(window.innerWidth / SCREEN_WIDTH, window.innerHeight / SCREEN_HEIGHT); document.getElementById("wrapper").style.transform = `scale(${scale})`; }
+window.addEventListener("resize", scaleCanvas); scaleCanvas(); requestAnimationFrame(mainProc);
+</script>
+</body>
+</html>
