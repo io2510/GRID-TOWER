@@ -1,0 +1,3271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>GRID TOWER ～目指せ100F～</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #000;
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  #wrapper {
+    position: absolute;
+    left: 0; top: 0;
+    width: 1920px; height: 1080px;
+    transform-origin: top left;
+  }
+  canvas {
+    display: block;
+    background: #111122;
+    cursor: default;
+    font-family: 'DotGothic16', sans-serif;
+  }
+
+  /* ===== スマホ縦画面用 操作パネル ===== */
+  #touchControls {
+    display: none;
+    position: absolute;
+    left: 0; width: 100%;
+    flex-direction: column;
+    background: #0a0a12;
+  }
+  #playerPad, #blockPad {
+    position: relative;
+    flex: 1 1 50%;
+    touch-action: none;
+  }
+  #playerPad {
+    background: #14141f;
+    border-bottom: 2px solid #2a2a3a;
+  }
+  #playerPad::after {
+    content: "移動 / ジャンプ / しゃがみ";
+    position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    color: #556; font-family: 'DotGothic16', sans-serif; font-size: 13px;
+    pointer-events: none; letter-spacing: 1px;
+  }
+  #stickBase, #stickKnob {
+    display: none;
+    position: absolute;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  #stickBase {
+    width: 90px; height: 90px;
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.25);
+  }
+  #stickKnob {
+    width: 36px; height: 36px;
+    background: rgba(120,200,255,0.55);
+    border: 2px solid rgba(200,240,255,0.85);
+  }
+  #blockPad {
+    background: #10101a;
+    display: flex;
+    flex-direction: row;
+  }
+  .blockCol {
+    flex: 1 1 33.333%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .blockCol:not(:last-child) { border-right: 1px solid #2a2a3a; }
+  .blockQuad {
+    flex: 1 1 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #cfd6ff; font-family: 'DotGothic16', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .blockQuad .qLabel { font-size: clamp(12px, 2.6vw, 18px); font-weight: bold; }
+  .blockQuad .qSub { font-size: clamp(9px, 1.7vw, 12px); color: #8892c0; margin-top: 2px; }
+  #padRotL, #padRotR   { border-bottom: 1px solid #2a2a3a; background: #171728; }
+  #padMoveL, #padMoveR { background: #10101a; }
+  .blockQuad:active { filter: brightness(1.5); }
+  .squareBtn {
+    flex: 1 1 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-top: 1px solid rgba(255,255,255,0.12);
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+    font-weight: bold;
+    font-family: 'DotGothic16', sans-serif;
+    font-size: clamp(13px, 3vw, 20px);
+    text-align: center; line-height: 1.3;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  .squareBtn:active { filter: brightness(0.85); }
+  #hardDropBtn { background: linear-gradient(160deg, #ff9a8a, #cc3a1e 85%); color: #3a0d05; }
+  #comboBtn    { background: linear-gradient(160deg, #ffe98a, #d99a00 85%); color: #3a2600; }
+  #softDropBtn { background: linear-gradient(160deg, #9adcff, #1e8ecc 85%); color: #052a3a; }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+</div>
+<div id="touchControls">
+  <div id="playerPad">
+    <div id="stickBase"></div>
+    <div id="stickKnob"></div>
+  </div>
+  <div id="blockPad">
+    <div class="blockCol">
+      <div id="padRotL" class="blockQuad"><span class="qLabel">↺回転</span><span class="qSub">Q</span></div>
+      <div id="padMoveL" class="blockQuad"><span class="qLabel">◀移動</span><span class="qSub">←</span></div>
+    </div>
+    <div class="blockCol">
+      <div id="hardDropBtn" class="squareBtn">ハード<br>ドロップ</div>
+      <div id="comboBtn" class="squareBtn">コンボ<br>ブロック</div>
+      <div id="softDropBtn" class="squareBtn">ソフト<br>ドロップ</div>
+    </div>
+    <div class="blockCol">
+      <div id="padRotR" class="blockQuad"><span class="qLabel">回転↻</span><span class="qSub">E</span></div>
+      <div id="padMoveR" class="blockQuad"><span class="qLabel">移動▶</span><span class="qSub">→</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// チュートリアルステップ定義 (tutorial_data.py 由来)[cite: 1, 6]
+// ============================================================
+const TUTORIAL_STEPS = [
+  { step: 1, text: "画面の見方を確認しましょう。\n中央がゲームエリア、左パネルにスコアとHP、\n右パネルに現在の階層（FLOOR）が表示されます。", condition_type: "wait_input", allowed_keys: ["f"], highlight: "ui" },
+  { step: 2, text: "プレイヤーの移動\n「A」キーで左、「D」キーで右に動かせます。\n実際に左右へ移動してみましょう。", condition_type: "player_move", allowed_keys: ["a", "d"], highlight: "player" },
+  { step: 3, text: "ジャンプ\n「Space」キーでジャンプします。\nブロックの上に乗ったり、落下を避けるのに使います。", condition_type: "player_jump", allowed_keys: ["a", "d", "space"], highlight: "player" },
+  { step: 4, text: "しゃがみ\n「S」キーを押している間、体が低くなり\n狭い隙間をくぐれるようになります（移動速度は少し下がります）。\n実際にしゃがんでみましょう。", condition_type: "player_crouch", allowed_keys: ["a", "d", "space", "s"], highlight: "player" },
+  { step: 5, text: "ブロックの左右移動\n「←」「→」キー、またはマウスの左右クリックで\n落下中のブロックを左右に動かせます。", condition_type: "block_move", allowed_keys: ["a", "d", "space", "s", "left", "right"], highlight: "block" },
+  { step: 6, text: "ブロックの回転\n「Q」キーで左回転、「E」キーで右回転します。\n実際に回転させてみましょう。", condition_type: "block_rotate", allowed_keys: ["a", "d", "space", "s", "left", "right", "q", "e"], highlight: "block" },
+  { step: 7, text: "落下速度アップ\n「↓」キーまたはマウスの中クリックを押している間、ブロックが速く落ちます。\n押し続けて速度アップを体験してみましょう。", condition_type: "block_speed", allowed_keys: ["a", "d", "space", "s", "left", "right", "q", "e", "down"], highlight: "block" },
+  { step: 8, text: "ハードドロップ\n「↑」キーを押すと、ブロックがその場から即座に落下・固定されます。\n実際に「↑」キーを押してみましょう。", condition_type: "hard_drop", allowed_keys: ["a", "d", "space", "s", "left", "right", "q", "e", "down", "up"], highlight: "block" },
+  { step: 9, text: "ラインを消す\n横一列をブロックで埋めるとラインが消え、スコアと階層が上がります。\n最下段の空いている2マスを埋めて、1ライン消去してみましょう。", condition_type: "line_clear", allowed_keys: ["all"], highlight: "none" },
+  { step: 10, text: "コンボ＆コンボブロック\n連続してライン消去すると「コンボ」になり、コンボ数に応じて階層がさらに上昇します。\nコンボ中に貯まった「コンボブロック」は「W」キーで盤面の隙間に割り込み設置できます。\n実際に「W」キーを押してコンボブロックを使ってみましょう。", condition_type: "combo_use", allowed_keys: ["all"], highlight: "none" },
+  { step: 11, text: "ビームの回避\n一定周期でプレイヤーを狙うビームが降ってきます。\n画面上部に「WARNING」が出たら、赤い範囲から逃げてください。\nビームを受けずに回避するとクリアです。", condition_type: "beam_evade", allowed_keys: ["all"], highlight: "warning" },
+  { step: 12, text: "チュートリアル完了！\n基本操作はすべて習得しました。\nブロックを積み上げて、できるだけ高い階層を目指しましょう！", condition_type: "wait_input", allowed_keys: ["f"], highlight: "none" }
+];
+
+// ============================================================
+// ブロックデータ (block_data.py 由来、50F用19〜21を追加)[cite: 1, 2]
+// ============================================================
+const BLOCKS = [
+  { shape_id:1, name:"square",  shape:[[0,0],[1,0],[0,1],[1,1]], color:"#ffee00", outline:"#bbaa00" },
+  { shape_id:2, name:"I4",      shape:[[0,0],[0,1],[0,2],[0,3]], color:"#00eeff", outline:"#0099bb" },
+  { shape_id:3, name:"I3",      shape:[[0,0],[0,1],[0,2]], color:"#55bbff", outline:"#2277bb" },
+  { shape_id:4, name:"I2",      shape:[[0,0],[0,1]], color:"#aaddff", outline:"#6699bb" },
+  { shape_id:5, name:"skew2",   shape:[[0,0],[1,1]], color:"#77ffaa", outline:"#22bb66" },
+  { shape_id:6, name:"T",       shape:[[0,0],[1,0],[2,0],[1,1]], color:"#cc44ff", outline:"#881199" },
+  { shape_id:7, name:"L",       shape:[[0,0],[0,1],[0,2],[1,2]], color:"#ff8800", outline:"#bb5500" },
+  { shape_id:8, name:"J",       shape:[[1,0],[1,1],[0,2],[1,2]], color:"#4488ff", outline:"#2255bb" },
+  { shape_id:9, name:"S",       shape:[[1,0],[2,0],[0,1],[1,1]], color:"#44ff66", outline:"#229944" },
+  { shape_id:10,name:"Z",       shape:[[0,0],[1,0],[1,1],[2,1]], color:"#ff3333", outline:"#bb1111" },
+  { shape_id:11,name:"stairs",  shape:[[1,0],[0,1],[1,1]], color:"#ff00ff", outline:"#aa00aa" },
+  { shape_id:12,name:"concave", shape:[[0,0],[2,0],[0,1],[1,1],[2,1]], color:"#ff9955", outline:"#cc6622" },
+  { shape_id:13,name:"T_inv",   shape:[[0,0],[1,0],[2,0],[1,1],[1,2]], color:"#ff6699", outline:"#bb2255" },
+  { shape_id:14,name:"cross",   shape:[[1,0],[0,1],[1,1],[2,1],[1,2]], color:"#ffcc00", outline:"#bb8800" },
+  { shape_id:15,name:"battan",  shape:[[0,0],[2,0],[1,1],[0,2],[2,2]], color:"#00ffcc", outline:"#00aa88" },
+  { shape_id:16,name:"H",       shape:[[0,0],[2,0],[0,1],[2,1]], color:"#ff44aa", outline:"#bb1177" },
+  { shape_id:17,name:"O_frame", shape:[[0,0],[1,0],[2,0],[0,1],[2,1],[0,2],[1,2],[2,2]], color:"#ffdd44", outline:"#bb9900" },
+  { shape_id:18,name:"one",     shape:[[0,0]], color:"#ffffff", outline:"#aaaaaa" },
+  // 【50Fボス専用追加分】反転ブロック定義（回転不可、特殊デバフ用）[cite: 2]
+  { shape_id:19,name:"invert_R",shape:[[0,0],[1,0],[0,1],[2,1],[0,2],[1,2],[0,3],[2,3],[0,4],[1,4]], color:"#0055ff", outline:"#0033aa" },
+  { shape_id:20,name:"invert_B",shape:[[0,0],[1,0],[0,1],[2,1],[0,2],[1,2],[0,3],[2,3],[0,4],[2,4]], color:"#ff1111", outline:"#aa0000" },
+  { shape_id:21,name:"invert_P",shape:[[0,0],[1,0],[0,1],[2,1],[0,2],[1,2],[0,3],[0,4]], color:"#b300ff", outline:"#7700cc" }
+];
+const RARE_BLOCK_IDS = [12, 13, 14, 15, 16, 17, 18];
+const BLOCK_COLOR_MAP = {
+  1: {fill:"#887700", outline:"#554400"},
+  2: {fill:"#007788", outline:"#004455"},
+  3: {fill:"#225588", outline:"#113355"},
+  4: {fill:"#556677", outline:"#334455"},
+  5: {fill:"#227744", outline:"#114422"},
+  6: {fill:"#662288", outline:"#440055"},
+  7: {fill:"#884400", outline:"#552200"},
+  8: {fill:"#224488", outline:"#112255"},
+  9: {fill:"#226633", outline:"#115533"},
+  10:{fill:"#881111", outline:"#550000"},
+  11:{fill:"#880088", outline:"#550055"},
+  12:{fill:"#884422", outline:"#552211"},
+  13:{fill:"#883344", outline:"#551122"},
+  14:{fill:"#886600", outline:"#554400"},
+  15:{fill:"#007755", outline:"#004433"},
+  16:{fill:"#882255", outline:"#551133"},
+  17:{fill:"#886611", outline:"#554400"},
+  18:{fill:"#777777", outline:"#444444"},
+  // 【50Fボス専用追加分】固定後のディープカラー色定義マップ[cite: 2]
+  19:{fill:"#002288", outline:"#001144"},
+  20:{fill:"#880000", outline:"#440000"},
+  21:{fill:"#550088", outline:"#220044"}
+};
+
+// ============================================================
+// 定数
+// ============================================================
+const SCREEN_WIDTH  = 1920;
+const SCREEN_HEIGHT = 1080;
+const SURVEY_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScnkWFuETTK-adgdI8RcYuR2Jl85qyf-EM3R0R1ymlrr51U-w/viewform?usp=publish-editor";
+const GAME_LEFT     = 640;
+const GAME_RIGHT    = 1280;
+const GAME_TOP      = 40;
+const GAME_BOTTOM   = 1040;
+const GRID_SIZE     = 40;
+const MAP_WIDTH     = 16;
+const MAP_HEIGHT    = 25;
+
+const GRAVITY    = 0.8;
+const JUMP_SPEED = -14.0;
+const MOVE_SPEED = 4;
+const PUSH_DELAY = 15;
+const P_HALF_W   = 15;
+const P_HALF_H   = 30;
+// game_constants.py 由来（しゃがみ時の当たり判定・移動速度）
+const CROUCH_P_HALF_H = 16;
+const CROUCH_MOVE_SPEED = 2;
+
+const BLOCK_FALL_INTERVAL      = 20;
+const BLOCK_FALL_INTERVAL_FAST = 2;
+const SCORE_PER_LINE           = 100;
+const LINES_PER_FLOOR          = 1;
+const MAX_HP                   = 5;
+const INVINCIBLE_FRAMES         = 180;
+
+const BEAM_CYCLE       = 600;
+const BEAM_WARNING     = 120;
+const BEAM_WIDTH       = 3;
+const BEAM_SHOW_FRAMES = 90;
+
+const BLOCK_MOVE_INITIAL_DELAY = 12;
+const BLOCK_MOVE_REPEAT_DELAY  = 4;
+const COMBO_BUFFER_FRAMES      = 180;
+const LINE_CLEAR_INTERVAL      = 6;
+const NORMAL_BLOCK_NO_REPEAT_WINDOW = 3;
+
+const FIXED_TERRAIN_BASE = 90000;
+const PUZZLE_BLUE_ID     = 3001;
+const PUZZLE_RED_ID      = 3002;
+const TRAP_GRACE_FRAMES  = 45;
+const BIG_BEAM_WARN_FRAMES = 30;
+const BIG_BEAM_FIRE_FRAMES = 20;
+
+// 【50Fボス専用追加分】渦巻き模様アニメーション関連定数[cite: 2]
+const SWIRL_STEPS = 50;
+const SWIRL_MAX_TURNS = 2.5;
+const SWIRL_ROT_SPEED = 0.08;
+
+// ============================================================
+// 60F/70Fボス用定数 (boss_data.py 由来)
+// ============================================================
+const BOSS60_BUOYANCY = 0.55;
+const BOSS60_UPWARD_FORCE = 1.2;
+const BOSS60_JUMP_FACTOR = 0.5;
+const BOSS60_FALL_MULTIPLIER = 2;
+const BOSS60_TRANSITION_FRAMES = 90;
+const BOSS60_SHIFT_INTERVAL = 3;
+
+const SEESAW_PIVOT_X = GAME_LEFT + 7.5 * GRID_SIZE + GRID_SIZE / 2; // 940
+const SEESAW_PIVOT_Y = GAME_TOP + 22 * GRID_SIZE;                   // 920
+const SEESAW_HALF_W = 240;
+const SEESAW_THICKNESS = 12;
+const SEESAW_GUARD_W = 20;
+const SEESAW_GUARD_H = 45;
+const MAX_TILT_RADIAN = 35.0 * Math.PI / 180.0;
+const BOSS70_WIN_TIMER_MAX = 180;
+const BOSS70_WIN_RECOVER_RATE = 1;
+// Pymunk実装の完全な物理エンジンはJS側に存在しないため、
+// トルク積分による簡易剛体シミュレーションで近似する。
+// (質量300・moment_for_box相当・乗数6.0・spring復元・damping減衰)
+const SEESAW_MASS = 300.0;
+const SEESAW_MOMENT = (SEESAW_MASS * ((SEESAW_HALF_W * 2) ** 2 + 30 ** 2) / 12) * 6.0;
+const SEESAW_SPRING_K = 30000000.0;
+const SEESAW_SPACE_DAMPING = 0.70;
+const SEESAW_COLS = Math.floor((SEESAW_HALF_W * 2) / GRID_SIZE); // 12列
+const SEESAW_DECK_TOP_LOCAL_Y = -SEESAW_THICKNESS / 2; // デッキ上面のローカルY
+
+const PLAYER_WEIGHT_BLOCKS = 2;
+const JUMP_PRESS_BLOCKS    = 2;
+const LANDING_PRESS_BLOCKS = 3;
+const BLOCK_UNIT_MASS      = 4.0;
+const SEESAW_GRAVITY_CONST = 900;
+const IMPULSE_PER_BLOCK    = 1250.0;
+const PLAYER_WEIGHT_FORCE   = PLAYER_WEIGHT_BLOCKS * BLOCK_UNIT_MASS * SEESAW_GRAVITY_CONST;
+const JUMP_PRESS_IMPULSE    = JUMP_PRESS_BLOCKS * IMPULSE_PER_BLOCK;
+const LANDING_PRESS_IMPULSE = LANDING_PRESS_BLOCKS * IMPULSE_PER_BLOCK;
+const PLAYER_PUSH_SPEED = 6.0; // 70Fシーソー：プレイヤーがブロックを押す速さ(通常移動速度と同程度)
+const BOSS70_SLIDE_START_ANGLE = 18.0 * Math.PI / 180.0;
+const BOSS70_SLIDE_FRICTION = 0.985;
+const BOSS70_FALL_MARGIN = GRID_SIZE * 2;
+
+// ============================================================
+// マップ配置データ (boss_data.py 由来)[cite: 1, 3]
+// ============================================================
+const BOSS_20F_MAP = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,9999,9999],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,9999,9999],
+  [0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0],
+  [0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0],
+  [0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0],
+  [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+  [0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0],
+  [0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0],
+  [0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0],
+  [0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0],
+  [0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0],
+  [0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+
+const BOSS_30F_PHASE_1 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,0,1,0,0,0,0,0,0,0,1,1,1,0,0],[0,0,1,1,1,0,0,0,0,1,0,0,0,0,0,0],
+  [0,1,1,1,1,1,0,0,1,1,1,0,0,0,0,0]
+];
+
+const BOSS_30F_PHASE_2 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0],[0,1,2,1,0,0,2,0,1,1,0,0,0,0,0,0],[0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0],
+  [0,0,0,0,0,0,1,0,0,1,1,0,1,1,0,0]
+];
+
+const BOSS_30F_PHASE_3 = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0],[0,0,0,0,0,0,0,0,0,1,0,0,0,1,1,0],[0,1,0,1,0,0,0,0,0,0,0,2,0,0,1,0],[0,0,1,0,0,0,0,0,0,0,2,2,2,0,1,0],
+  [0,2,1,0,0,0,0,0,0,0,0,2,0,0,1,0],[0,0,1,0,0,0,1,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0],[0,0,0,0,1,0,2,0,1,0,0,0,0,0,0,0],
+  [0,0,0,1,0,2,2,2,0,1,0,0,0,2,2,2]
+];
+
+const BOSS_30F_PHASES = [BOSS_30F_PHASE_1, BOSS_30F_PHASE_2, BOSS_30F_PHASE_3];
+
+const BOSS_40F_MAP = [
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,0,0,0,0,0,0,0,0,0,0,1,1,0],[0,0,0,1,0,0,0,1,1,0,0,0,1,0,0,0],
+  [0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,1,1,1,1,1,1,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,1,1,1,1,0,0,0,0,1,1,1,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,1,0,0,0,0,1,1,0,0,0,0,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,1,1,1,1,1,0,0,1,1,1,1,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,1,0,0,0,1,1,1,1,0,0,0,1,1,1],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,1,1,1,0,0,0,0,1,1,1,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+  [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+];
+
+function encode_fixed_terrain(serial) { return FIXED_TERRAIN_BASE + serial; }
+// 通常ID（shape_id * 1000 + serial）の50F反転ブロック(19〜21)が除外されるよう固定地形判定を調整[cite: 3, 4]
+function is_fixed_terrain(block_id) { return block_id >= FIXED_TERRAIN_BASE && block_id !== 9999; }
+
+// ============================================================
+// 70F: シーソー物理ギミック用の座標変換ヘルパー
+// (Pymunk実装の代わりに、トルク積分による簡易剛体シミュレーションで近似する)
+// ============================================================
+function seesawWorldToLocal(wx, wy, angle) {
+  const dx = wx - SEESAW_PIVOT_X, dy = wy - SEESAW_PIVOT_Y;
+  const cos = Math.cos(-angle), sin = Math.sin(-angle);
+  return [dx * cos - dy * sin, dx * sin + dy * cos];
+}
+function seesawLocalToWorld(lx, ly, angle) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  return [SEESAW_PIVOT_X + lx * cos - ly * sin, SEESAW_PIVOT_Y + lx * sin + ly * cos];
+}
+const BLOCK_CELL_WEIGHT = BLOCK_UNIT_MASS * SEESAW_GRAVITY_CONST; // 70F: ブロック1マス分の重み
+
+// 70F: 落下中のアクティブブロック（NEXTと実スポーンで同じ抽選ロジックを共有）
+class ActiveBlock70 {
+  constructor(spawnSide, blockData) { this.spawn(spawnSide, blockData); }
+  spawn(spawnSide, blockData) {
+    const data = blockData;
+    this.cells = data.shape.map(([dx, dy]) => [dx, dy]);
+    this.color = data.color; this.outline = data.outline;
+    let minX = Math.min(...this.cells.map(([dx]) => dx)), maxX = Math.max(...this.cells.map(([dx]) => dx));
+    let minY = Math.min(...this.cells.map(([, dy]) => dy)), maxY = Math.max(...this.cells.map(([, dy]) => dy));
+    this.centerOffsetX = (minX + maxX + 1) * GRID_SIZE / 2.0;
+    this.centerOffsetY = (minY + maxY + 1) * GRID_SIZE / 2.0;
+    this.x = (spawnSide === "left") ? GAME_LEFT + 2 * GRID_SIZE : GAME_RIGHT - 2 * GRID_SIZE;
+    this.y = GAME_TOP + 1 * GRID_SIZE;
+    this.angleDeg = 0.0;
+  }
+  rotate(dirDeg) { this.angleDeg = (this.angleDeg + dirDeg + 360) % 360; }
+  getCellLocalCenters() {
+    return this.cells.map(([cx, cy]) => [
+      (cx * GRID_SIZE + GRID_SIZE / 2.0) - this.centerOffsetX,
+      (cy * GRID_SIZE + GRID_SIZE / 2.0) - this.centerOffsetY,
+    ]);
+  }
+}
+
+// ============================================================
+// BossManager クラス (boss_data.py 完全互換 + 50F対応拡張)[cite: 1, 3]
+// ============================================================
+class BossManager {
+  constructor() { this.reset_all(); }
+  reset_all() {
+    this.savedBlockMap = null;
+    this.isBossActive = false;
+    this.bossFloor = 10;
+    this.bossHp = 0;
+    this.cursedBeamActive = false;
+    this.bossTimer = 0;
+    this.targetReached = false;
+    
+    // 30F
+    this.puzzleMap = null;
+    this.boss30PhaseIndex = 0;
+    this.boss30Hp = 0;
+    this.boss30Timer = 0;
+    this.trapActive = false;
+    this.trapTimer = 0;
+    this.bigBeamPhase = "none";
+    this.bigBeamTimer = 0;
+    this.trapBlinkOn = true;
+    this.boss30Cleared = false;
+    
+    // 40F
+    this.boss40Cleared = false;
+    this.boss40Step = 0;
+    this.boss40Timer = 20;
+    this.boss40SearchCount = 0;
+    this.boss40LaserPhase = "none";
+    this.boss40ActiveCols = [];
+    this.boss40ActiveRows = [];
+
+    // 【50Fボス専用追加分】パラメータ初期化[cite: 3]
+    this.boss50Phase = 0;                  // 1:青(R), 2:赤(B), 3:紫(P)
+    this.boss50PhaseBlockLocked = false; // ターゲットが盤面に一度でもロックされたか
+    this.boss50TargetRemaining = 0;       // 現在盤面上の対象セル残数
+    this.boss50SpawnRequested = false;    // 特殊ブロックの強制割り込み生成フラグ
+    this.boss50Cleared = false;            // 50Fボス完全撃破フラグ
+
+    // 60F: 水中戦・水流ギミック
+    this.boss60Flow = "down";
+    this.boss60Transition = false;
+    this.boss60TransitionTimer = 0;
+    this.boss60LinesTotal = 0;
+    this.boss60PhaseCount = 0;
+    this.boss60LinesInPhase = 0;
+    this.boss60Cleared = false;
+
+    // 70F: シーソー物理ギミック（簡易剛体シミュレーションで近似）
+    // 【リファクタ】70F関連のプロパティを1つのオブジェクトにまとめて管理する。
+    // 新しいボスを追加する際はここに `this.boss80 = {...}` のように1個増やすだけでよい。
+    this.boss70 = {
+      angle: 0,
+      angularVelocity: 0,
+      heightMap: null,        // 各列のローカルY(積み上げ高さ)
+      placedBlocks: [],       // {col, localY, w, h, color, outline} の配列（描画・当たり判定用）
+      activeBlock: null,
+      nextBlockData: null,
+      phase: 1,
+      winTimer: BOSS70_WIN_TIMER_MAX,
+      spawnSide: "left",
+      spawnDelayTimer: 0,
+      cleared: false,
+      wasGroundedOnSeesaw: false,
+      fallingBlocks: [],
+      groupVelocities: new Map(),
+    };
+  }
+  saveCurrentMap(blockMap) { this.savedBlockMap = blockMap.map(row => [...row]); }
+  restorePreviousMap(state) { if (this.savedBlockMap) { state.blockMap = this.savedBlockMap.map(row => [...row]); } }
+  
+  generateBossStage(state, floor) {
+    this.bossFloor = floor;
+    this.isBossActive = true;
+    this.saveCurrentMap(state.blockMap);
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    
+    if (floor === 10) {
+      const startY = MAP_HEIGHT - 8;
+      for (let y = startY; y < MAP_HEIGHT; y++) {
+        const holeX = Math.floor(Math.random() * MAP_WIDTH);
+        const mapValue = encode_fixed_terrain(state.nextSerial);
+        for (let x = 0; x < MAP_WIDTH; x++) { if (x !== holeX) state.blockMap[y][x] = mapValue; }
+        state.nextSerial += 1;
+      }
+      this.bossHp = 8;
+    } else if (floor === 20) {
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          let val = BOSS_20F_MAP[y][x];
+          if (val === 9999) state.blockMap[y][x] = 9999;
+          else if (val > 0) state.blockMap[y][x] = encode_fixed_terrain(state.nextSerial);
+        }
+      }
+      state.nextSerial += 1;
+      this.bossTimer = 3600;
+      this.targetReached = false;
+    } else if (floor === 30) {
+      this.boss30PhaseIndex = 0;
+      this.boss30Hp = 3;
+      this.boss30Timer = 3600;
+      this.trapActive = false;
+      this.trapTimer = 0;
+      this.bigBeamPhase = "none";
+      this.bigBeamTimer = 0;
+      this.boss30Cleared = false;
+      this.generate_puzzle_pattern();
+    } else if (floor === 40) {
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          if (BOSS_40F_MAP[y][x] === 1) state.blockMap[y][x] = encode_fixed_terrain(state.nextSerial);
+        }
+      }
+      state.nextSerial += 1;
+      this.bossTimer = 3600;
+      this.init_boss40_state();
+    } else if (floor === 50) {
+      // 【50Fボス専用追加分】50Fステージ初期構成生成[cite: 3]
+      this.boss50Phase = 1;
+      this.boss50PhaseBlockLocked = false;
+      this.boss50TargetRemaining = 0;
+      this.boss50SpawnRequested = true; // 開幕時の割り込み要求
+      this.boss50Cleared = false;
+    } else if (floor === 60) {
+      this.boss60Flow = "down";
+      this.boss60Transition = false;
+      this.boss60TransitionTimer = 0;
+      this.boss60LinesTotal = 0;
+      this.boss60PhaseCount = 0;
+      this.boss60LinesInPhase = 0;
+      this.boss60Cleared = false;
+    } else if (floor === 70) {
+      this.initBoss70Physics();
+      this.boss70.phase = 1;
+      this.boss70.winTimer = BOSS70_WIN_TIMER_MAX;
+      this.boss70.spawnSide = "left";
+      this.boss70.spawnDelayTimer = 0;
+      this.boss70.cleared = false;
+      this.boss70.wasGroundedOnSeesaw = false;
+    }
+  }
+
+  // --------------------------------------------------------
+  // 60F: 水中戦・水流ギミック
+  // --------------------------------------------------------
+  isBoss60Upward() { return this.isBoss60Context() && this.boss60Flow === "up"; }
+  isBoss60Transition() { return this.boss60Transition; }
+  isBoss60Context() { return this.isBossActive && this.bossFloor === 60; }
+  isBoss60UpwardActive() { return this.isBoss60Context() && this.boss60Flow === "up"; }
+  getBoss60FallIntervalMultiplier() { return BOSS60_FALL_MULTIPLIER; }
+  getBoss60JumpFactor() { return BOSS60_JUMP_FACTOR; }
+  getAdjustedFallInterval(base) { return this.isBoss60Context() ? Math.floor(base * this.getBoss60FallIntervalMultiplier()) : base; }
+  getBoss60FlowDisplay() { return this.boss60Flow.toUpperCase(); }
+  getBoss60PhaseDisplay() { return `${this.boss60PhaseCount + 1} / 4`; }
+  getBoss60LinesDisplay() { return `${this.boss60LinesInPhase} / 4`; }
+
+  isBoss60CeilingBlocked(ty) {
+    if (this.isBoss60UpwardActive()) { if (ty < 0 || ty >= MAP_HEIGHT) return true; }
+    else { if (ty >= MAP_HEIGHT) return true; }
+    return false;
+  }
+
+  getBoss60JumpVy(jumpSpeed, spaceTriggered, sTriggered) {
+    if (!this.isBoss60Upward() && spaceTriggered) return jumpSpeed * this.getBoss60JumpFactor();
+    if (this.isBoss60Upward() && sTriggered) return -jumpSpeed * this.getBoss60JumpFactor();
+    return 0;
+  }
+
+  getBoss60SpawnY(shape, defaultY) {
+    if (this.boss60Flow === "up") {
+      let maxDy = Math.max(...shape.map(([dx, dy]) => dy));
+      return MAP_HEIGHT - maxDy - 1;
+    }
+    return defaultY;
+  }
+
+  updateBoss60Frame(state, player, fb, beam) {
+    if (this.boss60Cleared) return "victory";
+    // 水流方向に応じた浮力／上昇力は、遷移演出中も途切れさせずに毎フレーム適用する。
+    // （ここが止まると、遷移中は通常重力だけが相殺されずにかかり続け、
+    //   プレイヤーが画面端まで一気に落ちてしまうバグになる）
+    if (this.boss60Flow === "up") {
+      if (!player.isGrounded) player.vy -= BOSS60_UPWARD_FORCE;
+    } else {
+      player.vy -= BOSS60_BUOYANCY;
+      if (player.vy < 0) player.isGrounded = false;
+    }
+    if (this.isBoss60Transition()) {
+      this.updateBoss60Transition(state, player);
+      beam.phase = "wait"; beam.timer = 0;
+      return "running";
+    } else {
+      if (this.boss60PhaseCount >= 2) return "update_beam";
+      beam.phase = "wait"; beam.timer = 0;
+      return "running";
+    }
+  }
+
+  updateBoss60Logic(state, player, beam) {
+    if (this.boss60Flow === "up") {
+      if (!player.isGrounded) player.vy -= BOSS60_UPWARD_FORCE;
+    } else {
+      player.vy -= BOSS60_BUOYANCY;
+      if (player.vy < 0) player.isGrounded = false;
+    }
+  }
+
+  triggerFlowTransition() {
+    this.boss60Transition = true;
+    this.boss60TransitionTimer = BOSS60_TRANSITION_FRAMES;
+    this.boss60Flow = (this.boss60Flow === "down") ? "up" : "down";
+  }
+
+  updateBoss60Transition(state, player) {
+    if (!this.boss60Transition) return false;
+    this.boss60TransitionTimer -= 1;
+    if (this.boss60TransitionTimer % BOSS60_SHIFT_INTERVAL === 0) {
+      if (this.boss60Flow === "up") this.applyBoss60UpwardGravity(state, player);
+      else this.applyBoss60DownwardGravity(state);
+    }
+    if (this.boss60TransitionTimer <= 0) { this.boss60Transition = false; return true; }
+    return false;
+  }
+
+  onBoss60LineCleared(linesCleared) {
+    this.boss60LinesTotal += linesCleared;
+    this.boss60LinesInPhase += linesCleared;
+    if (this.boss60LinesInPhase >= 4) {
+      this.boss60LinesInPhase = 0;
+      this.boss60PhaseCount += 1;
+      if (this.boss60PhaseCount > 3) { this.boss60Cleared = true; this.boss60Flow = "down"; return "victory"; }
+      else if (!this.boss60Transition) { this.triggerFlowTransition(); return "transition"; }
+      return "running";
+    }
+    return "running";
+  }
+
+  applyBoss60UpwardGravity(state, player = null) {
+    let cache = state.getBlockCache();
+    for (let blockId of Object.keys(cache).map(Number).sort((a, b) => a - b)) {
+      if (blockId === 9999 || is_fixed_terrain(blockId)) continue;
+      let cells = cache[blockId]; if (!cells || cells.length === 0) continue;
+      let canRise = true;
+      for (const [cx, cy] of cells) {
+        let ny = cy - 1;
+        if (ny < 0 || (state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId)) { canRise = false; break; }
+      }
+      if (canRise) {
+        cells.slice().sort((a, b) => a[1] - b[1]).forEach(([cx, cy]) => { state.blockMap[cy - 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+        if (player) this.correctPlayerUpwardCollision(player, cells);
+      }
+    }
+  }
+
+  applyBoss60DownwardGravity(state) {
+    let cache = state.getBlockCache();
+    for (let blockId of Object.keys(cache).map(Number).sort((a, b) => a - b)) {
+      if (blockId === 9999 || is_fixed_terrain(blockId)) continue;
+      let cells = cache[blockId]; if (!cells || cells.length === 0) continue;
+      let canDrop = true;
+      for (const [cx, cy] of cells) {
+        let ny = cy + 1;
+        if (ny >= MAP_HEIGHT || (state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId)) { canDrop = false; break; }
+      }
+      if (canDrop) {
+        cells.slice().sort((a, b) => b[1] - a[1]).forEach(([cx, cy]) => { state.blockMap[cy + 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+      }
+    }
+  }
+
+  tryRiseBlocksByOne(state, blockIds, blockCache, extraBlockedCells = null, player = null) {
+    let settledIds = new Set();
+    for (let blockId of Array.from(blockIds).sort((a, b) => a - b)) {
+      if (blockId === 9999 || is_fixed_terrain(blockId)) { settledIds.add(blockId); continue; }
+      let cells = blockCache[blockId];
+      if (!cells || cells.length === 0) { settledIds.add(blockId); continue; }
+      let canRise = true;
+      for (const [cx, cy] of cells) {
+        let ny = cy - 1;
+        if (ny < 0) { canRise = false; break; }
+        if (state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId) { canRise = false; break; }
+        if (extraBlockedCells && extraBlockedCells.has(`${cx},${ny}`)) { canRise = false; break; }
+      }
+      if (canRise) {
+        cells.slice().sort((a, b) => a[1] - b[1]).forEach(([cx, cy]) => { state.blockMap[cy - 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+        if (player) this.correctPlayerUpwardCollision(player, cells);
+      } else settledIds.add(blockId);
+    }
+    return settledIds;
+  }
+
+  findUnsupportedBlocksBelow(state, cells, excludeId = null) {
+    let bottomCells = {};
+    for (const [cx, cy] of cells) { if (!(cx in bottomCells) || cy > bottomCells[cx]) bottomCells[cx] = cy; }
+    let foundIds = new Set();
+    for (const cx in bottomCells) {
+      let ay = bottomCells[cx] + 1;
+      if (ay >= MAP_HEIGHT) continue;
+      let belowId = state.blockMap[ay][cx];
+      if (belowId >= 1 && belowId !== excludeId) foundIds.add(belowId);
+    }
+    return foundIds;
+  }
+
+  updateBoss60Gravity(state, fb, baseInterval, isPushOnly, tryDropFn, findAboveFn, player = null) {
+    let timerAttr = isPushOnly ? "pushGravityTimer" : "gravityTimer";
+    let interval = Math.floor(baseInterval * this.getBoss60FallIntervalMultiplier());
+    state[timerAttr] += 1;
+    if (state[timerAttr] < interval) return false;
+    state[timerAttr] = 0;
+    let settledIds = new Set();
+
+    if (isPushOnly) {
+      let fbCells = fb ? new Set(fb.getCells().map(([x, y]) => `${x},${y}`)) : new Set();
+      let blockCache = state.getBlockCache();
+      let existingIds = new Set(); state.pushedBlockIds.forEach(id => { if (blockCache[id]) existingIds.add(id); });
+      state.pushedBlockIds = existingIds;
+      if (state.pushedBlockIds.size === 0) return false;
+
+      let movedIds;
+      if (this.isBoss60Upward()) {
+        settledIds = this.tryRiseBlocksByOne(state, state.pushedBlockIds, blockCache, fbCells, player);
+        if (player) this.correctPlayerAfterDrop(state, player);
+        movedIds = new Set(Array.from(state.pushedBlockIds).filter(id => !settledIds.has(id)));
+        let chainIds = new Set();
+        movedIds.forEach(id => { let cells = blockCache[id] || []; this.findUnsupportedBlocksBelow(state, cells, id).forEach(x => chainIds.add(x)); });
+        chainIds.forEach(id => state.pushedBlockIds.add(id));
+      } else {
+        settledIds = tryDropFn(state, state.pushedBlockIds, blockCache, fbCells);
+        movedIds = new Set(Array.from(state.pushedBlockIds).filter(id => !settledIds.has(id)));
+        let chainIds = new Set();
+        movedIds.forEach(id => { let cells = blockCache[id] || []; findAboveFn(state, cells, id).forEach(x => chainIds.add(x)); });
+        chainIds.forEach(id => state.pushedBlockIds.add(id));
+      }
+      settledIds.forEach(id => state.pushedBlockIds.delete(id));
+      if (movedIds.size > 0 && fb) fb.timer = interval;
+    } else {
+      if (this.isBoss60Upward()) {
+        this.applyBoss60UpwardGravity(state, player);
+        if (player) this.correctPlayerAfterDrop(state, player);
+        return true;
+      } else {
+        let blockCache = state.getBlockCache();
+        settledIds = tryDropFn(state, Object.keys(blockCache).map(Number), blockCache);
+      }
+    }
+    return settledIds.size > 0;
+  }
+
+  correctPlayerUpwardCollision(player, cells) {
+    if (!player) return;
+    let pHalfH = (player && player.isCrouching) ? CROUCH_P_HALF_H : P_HALF_H;
+    let pLeft = player.x - P_HALF_W + 2, pRight = player.x + P_HALF_W - 2;
+    let pBottom = player.y + pHalfH, pTop = player.y - pHalfH;
+    let maxBBottom = null;
+    for (const [cx, cy] of cells) {
+      let bLeft = GAME_LEFT + cx * GRID_SIZE, bRight = bLeft + GRID_SIZE;
+      let bTopNew = GAME_TOP + (cy - 1) * GRID_SIZE, bBottomNew = bTopNew + GRID_SIZE;
+      if (pRight > bLeft && pLeft < bRight && pBottom > bTopNew && pTop < bBottomNew) {
+        if (maxBBottom === null || bBottomNew > maxBBottom) maxBBottom = bBottomNew;
+      }
+    }
+    if (maxBBottom !== null) { player.y = maxBBottom + pHalfH; player.vy = Math.max(player.vy, 0.0); }
+  }
+
+  correctPlayerAfterDrop(state, player) {
+    if (!player) return;
+    let pHalfH = (player && player.isCrouching) ? CROUCH_P_HALF_H : P_HALF_H;
+    let pLeft = player.x - P_HALF_W + 2, pRight = player.x + P_HALF_W - 2;
+    let pTop = player.y - pHalfH, pBottom = player.y + pHalfH;
+    let gyTop = Math.floor((pTop - GAME_TOP) / GRID_SIZE), gyBottom = Math.floor((pBottom - GAME_TOP) / GRID_SIZE);
+    let gxLeft = Math.floor((pLeft - GAME_LEFT) / GRID_SIZE), gxRight = Math.floor((pRight - GAME_LEFT) / GRID_SIZE);
+    let minBTop = null, maxBBottom = null;
+    for (let gy = Math.max(0, gyTop); gy <= Math.min(MAP_HEIGHT - 1, gyBottom); gy++) {
+      for (let gx = Math.max(0, gxLeft); gx <= Math.min(MAP_WIDTH - 1, gxRight); gx++) {
+        let bid = state.blockMap[gy][gx];
+        if (bid >= 1 && bid !== 9999 && !is_fixed_terrain(bid)) {
+          let bTop = GAME_TOP + gy * GRID_SIZE, bBottom = bTop + GRID_SIZE;
+          if (minBTop === null || bTop < minBTop) minBTop = bTop;
+          if (maxBBottom === null || bBottom > maxBBottom) maxBBottom = bBottom;
+        }
+      }
+    }
+    if (this.isBoss60Upward()) {
+      if (maxBBottom !== null) { player.y = maxBBottom + pHalfH; player.vy = Math.max(player.vy || 0, 0.0); }
+    } else {
+      if (minBTop !== null) { player.y = minBTop - pHalfH; player.vy = Math.min(player.vy || 0, 0.0); player.isGrounded = true; }
+    }
+  }
+
+  // --------------------------------------------------------
+  // 70F: シーソー物理ギミック
+  // (Pymunkが無いJS環境のため、剛体シミュレーションはトルク積分による
+  //  簡易近似で再現する。設置済みブロックはシーソーのローカル座標に
+  //  固定され、シーソーの回転と一緒に剛体的に動く。)
+  // --------------------------------------------------------
+  pickBoss70BlockData() {
+    let pool = BLOCKS.filter(b => b.shape_id <= 11);
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  initBoss70Physics() {
+    this.boss70.angle = 0;
+    this.boss70.angularVelocity = 0;
+    this.boss70.heightMap = new Array(SEESAW_COLS).fill(SEESAW_DECK_TOP_LOCAL_Y);
+    this.boss70.placedBlocks = [];
+    this.boss70.fallingBlocks = [];
+    this.boss70.groupVelocities = new Map();
+    this.boss70.spawnSide = "left";
+    this.boss70.activeBlock = new ActiveBlock70(this.boss70.spawnSide, this.pickBoss70BlockData());
+    this.boss70.nextBlockData = this.pickBoss70BlockData();
+  }
+
+  resetBoss70Board() {
+    this.boss70.placedBlocks = [];
+    this.boss70.fallingBlocks = [];
+    this.boss70.groupVelocities = new Map();
+    this.boss70.heightMap = new Array(SEESAW_COLS).fill(SEESAW_DECK_TOP_LOCAL_Y);
+    this.boss70.angle = 0;
+    this.boss70.angularVelocity = 0;
+    this.boss70.winTimer = BOSS70_WIN_TIMER_MAX;
+    this.boss70.spawnDelayTimer = 30;
+    this.boss70.spawnSide = "left";
+    if (this.boss70.activeBlock) {
+      if (!this.boss70.nextBlockData) this.boss70.nextBlockData = this.pickBoss70BlockData();
+      this.boss70.activeBlock.spawn(this.boss70.spawnSide, this.boss70.nextBlockData);
+      this.boss70.nextBlockData = this.pickBoss70BlockData();
+    }
+  }
+
+  // 落下中ブロックのセル中心をシーソーローカル座標へ変換し、既存の積み上げ(heightMap)と衝突するか判定
+  checkBoss70ActiveBlockCollision(checkX, checkY, checkAngleDeg) {
+    const active = this.boss70.activeBlock;
+    if (!active) return false;
+    const rad = checkAngleDeg * Math.PI / 180.0;
+    const cosA = Math.cos(rad), sinA = Math.sin(rad);
+    const hw = (GRID_SIZE - 1) / 2.0, hh = (GRID_SIZE - 1) / 2.0;
+    const rotatePoint = (x, y, c, s, ox, oy) => [x * c - y * s + ox, x * s + y * c + oy];
+    const axes = polygon => polygon.map((p, i) => {
+      const q = polygon[(i + 1) % polygon.length], ex = q[0] - p[0], ey = q[1] - p[1];
+      const len = Math.hypot(ex, ey) || 1;
+      return [-ey / len, ex / len];
+    });
+    const overlaps = (a, b) => {
+      for (const axis of axes(a).concat(axes(b))) {
+        let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
+        for (const p of a) { const v = p[0] * axis[0] + p[1] * axis[1]; amin = Math.min(amin, v); amax = Math.max(amax, v); }
+        for (const p of b) { const v = p[0] * axis[0] + p[1] * axis[1]; bmin = Math.min(bmin, v); bmax = Math.max(bmax, v); }
+        if (amax <= bmin + 0.01 || bmax <= amin + 0.01) return false;
+      }
+      return true;
+    };
+    const square = (cx, cy, c, s) =>
+      [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([x, y]) => rotatePoint(x, y, c, s, cx, cy));
+    const placedWorld = b => {
+      const [cx, cy] = seesawLocalToWorld(b.localX, b.localY, this.boss70.angle);
+      return square(cx, cy, Math.cos(this.boss70.angle), Math.sin(this.boss70.angle));
+    };
+
+    for (const [lx, ly] of active.getCellLocalCenters()) {
+      const rx = lx * cosA - ly * sinA + checkX, ry = lx * sinA + ly * cosA + checkY;
+      const polygon = square(rx, ry, cosA, sinA);
+      // 中心点ではなく回転後の全頂点で画面端を止める。
+      if (polygon.some(([x, y]) => x < GAME_LEFT || x > GAME_RIGHT || y > GAME_BOTTOM + GRID_SIZE)) return true;
+      const localPolygon = polygon.map(([x, y]) => seesawWorldToLocal(x, y, this.boss70.angle));
+      if (localPolygon.some(([x, y]) =>
+        x >= -SEESAW_HALF_W && x <= SEESAW_HALF_W &&
+        y >= SEESAW_DECK_TOP_LOCAL_Y - 1 && y <= SEESAW_DECK_TOP_LOCAL_Y + GRID_SIZE)) return true;
+      // heightMapだけでは拾えない、隣接セルの角同士の接触も判定する。
+      if (this.boss70.placedBlocks.some(b => overlaps(polygon, placedWorld(b)))) return true;
+    }
+    return false;
+  }
+
+  // 積みブロック群(placedBlocks)から heightMap を毎回組み直す。
+  // プッシュでブロックが横に動いた後など、差分更新ではなく全体再計算が必要な場面で使う。
+  recomputeBoss70HeightMap() {
+    const hm = new Array(SEESAW_COLS).fill(SEESAW_DECK_TOP_LOCAL_Y);
+    for (const b of this.boss70.placedBlocks) {
+      const col = Math.max(0, Math.min(SEESAW_COLS - 1, Math.floor((b.localX + SEESAW_HALF_W) / GRID_SIZE)));
+      const cellTopLocalY = b.localY - GRID_SIZE / 2.0;
+      if (cellTopLocalY < hm[col]) hm[col] = cellTopLocalY;
+    }
+    this.boss70.heightMap = hm;
+  }
+
+  updateBoss70ActiveBlock(state, player) {
+    if (this.boss70.spawnDelayTimer > 0) {
+      this.boss70.spawnDelayTimer -= 1;
+      if (this.boss70.spawnDelayTimer === 0) {
+        if (this.boss70.angle > 0.02) this.boss70.spawnSide = "right";
+        else if (this.boss70.angle < -0.02) this.boss70.spawnSide = "left";
+        else this.boss70.spawnSide = Math.random() < 0.5 ? "left" : "right";
+
+        this.boss70.activeBlock.spawn(this.boss70.spawnSide, this.boss70.nextBlockData);
+        this.boss70.nextBlockData = this.pickBoss70BlockData();
+
+        if (this.checkBoss70ActiveBlockCollision(this.boss70.activeBlock.x, this.boss70.activeBlock.y, this.boss70.activeBlock.angleDeg)) {
+          return "damage";
+        }
+      }
+      return "running";
+    }
+
+    const active = this.boss70.activeBlock;
+    if (!active) return "running";
+    const ks = state.keyStates;
+    let moveDx = 0;
+    if (ks.left) moveDx -= 6.0;
+    if (ks.right) moveDx += 6.0;
+
+    if (moveDx !== 0) {
+      let nextX = active.x + moveDx;
+      if (!this.checkBoss70ActiveBlockCollision(nextX, active.y, active.angleDeg)) {
+        active.x = nextX;
+      } else {
+        let step = moveDx > 0 ? 1.0 : -1.0;
+        for (let i = 0; i < Math.abs(moveDx); i++) {
+          if (!this.checkBoss70ActiveBlockCollision(active.x + step, active.y, active.angleDeg)) active.x += step;
+          else break;
+        }
+      }
+    }
+
+    const fallSpeed = ks.down ? 3 * 3.5 : 3;
+    const nextY = active.y + fallSpeed;
+
+    if (this.checkBoss70ActiveBlockCollision(active.x, nextY, active.angleDeg)) {
+      // 【修正】fallSpeed分をまとめて進めた位置で衝突判定していたため、
+      // 実際に接地するY座標より最大fallSpeed分だけ手前(浮いた位置)でロックされ、
+      // 見た目上ブロックが宙に浮いて見えるバグがあった。
+      // 衝突が起きたら、衝突しない最大のYまで1pxずつ詰めてから焼き込むことで隙間ゼロで接地させる。
+      let landY = active.y;
+      while (landY + 1 <= nextY && !this.checkBoss70ActiveBlockCollision(active.x, landY + 1, active.angleDeg)) {
+        landY += 1;
+      }
+      active.y = landY;
+
+      // 頭上押しつぶし: ロック位置とプレイヤーの重なりを簡易チェック
+      const rad = active.angleDeg * Math.PI / 180.0, cosA = Math.cos(rad), sinA = Math.sin(rad);
+      const hw = GRID_SIZE / 2.0, hh = GRID_SIZE / 2.0;
+      let crushed = false;
+      if (player && player.invincible === 0) {
+        const pHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+        for (const [lx, ly] of active.getCellLocalCenters()) {
+          const rx = lx * cosA - ly * sinA + active.x, ry = lx * sinA + ly * cosA + active.y;
+          if (Math.abs(rx - player.x) < (hw + P_HALF_W - 2) && Math.abs(ry - player.y) < (hh + pHalfH - 2)) { crushed = true; break; }
+        }
+      }
+      // ロック：セルをheightMapとplacedBlocksへ焼き込む（以後シーソーと一体回転）
+      // 同じピース由来のセルには共通の groupId を振り、後でまとめて押せるようにする
+      this.boss70._groupSeq = (this.boss70._groupSeq || 0) + 1;
+      const groupId = this.boss70._groupSeq;
+      for (const [lx, ly] of active.getCellLocalCenters()) {
+        const rx = lx * cosA - ly * sinA + active.x, ry = lx * sinA + ly * cosA + active.y;
+        const [localX, localY] = seesawWorldToLocal(rx, ry, this.boss70.angle);
+        const col = Math.max(0, Math.min(SEESAW_COLS - 1, Math.floor((localX + SEESAW_HALF_W) / GRID_SIZE)));
+        const cellTopLocalY = localY - GRID_SIZE / 2.0;
+        if (cellTopLocalY < this.boss70.heightMap[col]) this.boss70.heightMap[col] = cellTopLocalY;
+        this.boss70.placedBlocks.push({ localX, localY, color: active.color, outline: active.outline, groupId });
+      }
+      this.boss70.spawnDelayTimer = 90;
+      if (crushed) return "damage";
+    } else {
+      active.y = nextY;
+      if (active.y > GAME_BOTTOM + 100) this.boss70.spawnDelayTimer = 90;
+    }
+    return "running";
+  }
+
+  handleBoss70Input(sym) {
+    const active = this.boss70.activeBlock;
+    if (!active || this.boss70.spawnDelayTimer > 0) return;
+    if (sym === "q") { if (!this.checkBoss70ActiveBlockCollision(active.x, active.y, (active.angleDeg - 90 + 360) % 360)) active.rotate(-90); }
+    else if (sym === "e") { if (!this.checkBoss70ActiveBlockCollision(active.x, active.y, (active.angleDeg + 90) % 360)) active.rotate(90); }
+  }
+
+  // プレイヤーの左右移動をシーソー面・積みブロックと衝突解決する（簡易近似）
+  resolveBoss70Horizontal(currX, nextX, currY, pHalfW, pHalfH) {
+    if (nextX === currX) return currX;
+    const [curLocalX, curLocalY] = seesawWorldToLocal(currX, currY, this.boss70.angle);
+    if (curLocalX < -SEESAW_HALF_W || curLocalX > SEESAW_HALF_W) return nextX; // シーソー圏外は自由移動
+    const dir = nextX > currX ? 1 : -1;
+    const [nextLocalX] = seesawWorldToLocal(nextX, currY, this.boss70.angle);
+
+    // 【修正】プレイヤーの「中心点」だけで壁/ガード/積みブロックの当たり判定をしていたため、
+    // 中心が壁の手前にあっても体の半分(pHalfW分)が先にブロックへめり込んでから止まっていた。
+    // 進行方向側の先端(中心からpHalfW分先)を使って判定する。
+    const leadLocalX = nextLocalX + dir * pHalfW;
+
+    const guardMargin = SEESAW_GUARD_W;
+    const clampedLeadLocalX = Math.max(-SEESAW_HALF_W + guardMargin, Math.min(SEESAW_HALF_W - guardMargin, leadLocalX));
+    if (Math.abs(clampedLeadLocalX - leadLocalX) > 0.01) {
+      // ガードレールに阻まれる：先端がレールぎりぎりで止まるよう中心のローカルXを逆算する
+      const clampedCenterLocalX = clampedLeadLocalX - dir * pHalfW;
+      const [wx] = seesawLocalToWorld(clampedCenterLocalX, curLocalY, this.boss70.angle);
+      return wx;
+    }
+
+    // 段差チェック：足元(プレイヤーの接地想定Y)より移動先の積み上げ面が高い場合のみ壁として扱う。
+    // 逆にプレイヤーが既にその高さ以上にいる（ブロックの上に乗っている・ジャンプで越えている）場合は
+    // 自由に移動できる（以前は列の高さ差だけで判定しており、ブロックの真上を歩いているだけでも
+    // 「壁に当たった」扱いになってしまっていた）。
+    const nextSurf = this.getBoss70SurfaceLocalY(leadLocalX);
+    const footLocalY = curLocalY + pHalfH;
+    if (footLocalY <= nextSurf + 2) return nextX;
+
+    // 壁扱い：積みブロックであれば押せるか試す。押せたらブロックだけ動かし、プレイヤーはその場に留まる。
+    this.tryPushBoss70Block(leadLocalX, dir, footLocalY);
+    return currX;
+  }
+
+  // localX の位置にある積みブロックをプレイヤーが押す。押せた場合 true を返す。
+  tryPushBoss70Block(localX, dir, footLocalY) {
+    const candidates = this.boss70.placedBlocks.filter(b => {
+      if (b.groupId === undefined) return false;
+      // プレイヤーの足元より上に突き出しているセルだけを押す対象にする
+      return Math.abs(b.localX - localX) <= GRID_SIZE / 2 + 0.01 &&
+        (b.localY + GRID_SIZE / 2) > footLocalY - GRID_SIZE;
+    });
+    if (!candidates.length) return false;
+
+    const groupId = candidates[0].groupId;
+    const groupCells = this.boss70.placedBlocks.filter(b => b.groupId === groupId);
+    const otherCells = this.boss70.placedBlocks.filter(b => b.groupId !== groupId);
+    const shift = dir * PLAYER_PUSH_SPEED;
+
+    for (const c of groupCells) {
+      const newLocalX = c.localX + shift;
+      const minX = -SEESAW_HALF_W + SEESAW_GUARD_W + GRID_SIZE / 2;
+      const maxX = SEESAW_HALF_W - SEESAW_GUARD_W - GRID_SIZE / 2;
+      if (newLocalX < minX || newLocalX > maxX) return false; // ガードレールに阻まれて押せない
+      for (const o of otherCells) {
+        if (Math.abs(o.localX - newLocalX) < GRID_SIZE &&
+            Math.abs(o.localY - c.localY) < GRID_SIZE * 0.8) return false; // 別のブロック群に阻まれて押せない
+      }
+    }
+    for (const c of groupCells) c.localX += shift;
+    this.recomputeBoss70HeightMap();
+    // 【修正】押した拍子に、押された塊の上に乗っていた別の塊(グループ)が支えを失って
+    // 宙に浮いたままになることがあった。シーソーが傾くと、浮いたグループだけ
+    // 位置ズレが目立ち「ブロックがそれぞれ個別に傾いている」ように見えてしまうバグの原因だったため、
+    // 押した後は全グループを対象に一体のまま落下させて隙間なく詰め直す。
+    this.settleAllBoss70Groups();
+    return true;
+  }
+
+  // 指定グループが下の面(他グループ or デッキ)から浮いている場合、一体のまま接触するまで落とす。
+  // 落とした場合は true を返す。
+  settleBoss70Group(groupId) {
+    const groupCells = this.boss70.placedBlocks.filter(b => b.groupId === groupId);
+    if (!groupCells.length) return false;
+    const otherCells = this.boss70.placedBlocks.filter(b => b.groupId !== groupId);
+
+    // 他グループ／デッキから見た、各列の「支える面」のローカルY(＝その列の一番上のセルの上面)
+    const otherHeightMap = new Array(SEESAW_COLS).fill(SEESAW_DECK_TOP_LOCAL_Y);
+    for (const o of otherCells) {
+      const oCol = Math.max(0, Math.min(SEESAW_COLS - 1, Math.floor((o.localX + SEESAW_HALF_W) / GRID_SIZE)));
+      const topLocalY = o.localY - GRID_SIZE / 2;
+      if (topLocalY < otherHeightMap[oCol]) otherHeightMap[oCol] = topLocalY;
+    }
+
+    // 自グループが占める各列で、最も下(localYが最大)にあるセルの底面Yを求める
+    const colBottom = new Map(); // col -> bottomLocalY
+    for (const c of groupCells) {
+      const col = Math.max(0, Math.min(SEESAW_COLS - 1, Math.floor((c.localX + SEESAW_HALF_W) / GRID_SIZE)));
+      const bottomLocalY = c.localY + GRID_SIZE / 2;
+      if (!colBottom.has(col) || bottomLocalY > colBottom.get(col)) colBottom.set(col, bottomLocalY);
+    }
+
+    // 各列であと何ピクセル落とせるかを求め、最小値(＝最初にどこかへ接触する量)まで一体で落とす
+    let dropAmount = Infinity;
+    for (const [col, bottomLocalY] of colBottom.entries()) {
+      const gap = otherHeightMap[col] - bottomLocalY;
+      if (gap < dropAmount) dropAmount = gap;
+    }
+    if (!isFinite(dropAmount) || dropAmount <= 0.5) return false; // 浮いていない、または既に接触
+
+    for (const c of groupCells) c.localY += dropAmount;
+    return true;
+  }
+
+  // すべての設置済みグループを対象に settleBoss70Group を適用する。
+  // あるグループが落下したことで別のグループの支えが変わる連鎖にも対応するため、複数回パスする。
+  settleAllBoss70Groups() {
+    const groupIds = [...new Set(this.boss70.placedBlocks.map(b => b.groupId))];
+    for (let pass = 0; pass < 4; pass++) {
+      let moved = false;
+      // 上にある(localYが小さい)グループから順に詰めると連鎖崩れが少ないパスで安定する
+      const order = groupIds.slice().sort((a, b) => {
+        const avg = gid => {
+          const cells = this.boss70.placedBlocks.filter(bl => bl.groupId === gid);
+          return cells.reduce((s, c) => s + c.localY, 0) / (cells.length || 1);
+        };
+        return avg(a) - avg(b);
+      });
+      for (const gid of order) {
+        if (this.settleBoss70Group(gid)) moved = true;
+      }
+      if (!moved) break;
+    }
+    this.recomputeBoss70HeightMap();
+  }
+
+  // シーソーが大きく傾いたときは、設置済みブロックをシーソーへ
+  // 永久固定しない。低い側へ滑らせ、端を越えたセルはワールド空間の
+  // 落下ブロックへ変換する（Python版のPymunk剛体に相当）。
+  updateBoss70SlidingBlocks() {
+    const placed = this.boss70.placedBlocks;
+    if (!placed.length) {
+      this.updateBoss70FallingBlocks();
+      return;
+    }
+
+    const dt = 1 / 60;
+    const angle = this.boss70.angle;
+    const slideSign = Math.sign(Math.sin(angle));
+    const groups = new Map();
+    for (const b of placed) {
+      if (!groups.has(b.groupId)) groups.set(b.groupId, []);
+      groups.get(b.groupId).push(b);
+    }
+
+    const removeGroups = new Set();
+    for (const [groupId, cells] of groups) {
+      if (!this.boss70.groupVelocities.has(groupId)) this.boss70.groupVelocities.set(groupId, 0);
+      let velocity = this.boss70.groupVelocities.get(groupId);
+      // 小さな揺れでは積み上げを崩さず、強い傾きでだけ滑り始める。
+      if (Math.abs(angle) > BOSS70_SLIDE_START_ANGLE) {
+        velocity += slideSign * SEESAW_GRAVITY_CONST * Math.abs(Math.sin(angle)) * dt * 0.35;
+        velocity *= BOSS70_SLIDE_FRICTION;
+        const delta = velocity * dt;
+        const otherCells = placed.filter(b => b.groupId !== groupId);
+        const blocked = cells.some(c => otherCells.some(o =>
+          Math.abs((c.localX + delta) - o.localX) < GRID_SIZE &&
+          Math.abs(c.localY - o.localY) < GRID_SIZE
+        ));
+        if (!blocked) {
+          for (const b of cells) b.localX += delta;
+        } else {
+          // ほかの塊に当たったら速度を止める。塊を壊したり、
+          // セル単位で別方向へ散らしたりはしない。
+          velocity = 0;
+        }
+      } else {
+        velocity *= 0.90;
+      }
+      this.boss70.groupVelocities.set(groupId, velocity);
+
+      const lowEdge = slideSign >= 0
+        ? Math.max(...cells.map(b => b.localX + GRID_SIZE / 2))
+        : Math.min(...cells.map(b => b.localX - GRID_SIZE / 2));
+      if (slideSign !== 0 && ((slideSign > 0 && lowEdge > SEESAW_HALF_W) ||
+                              (slideSign < 0 && lowEdge < -SEESAW_HALF_W))) {
+        removeGroups.add(groupId);
+      }
+    }
+
+    if (removeGroups.size) {
+      for (const b of placed) {
+        if (!removeGroups.has(b.groupId)) continue;
+        const [x, y] = seesawLocalToWorld(b.localX, b.localY, angle);
+        const groupVelocity = this.boss70.groupVelocities.get(b.groupId) || 0;
+        const tangentX = Math.cos(angle) * groupVelocity;
+        const tangentY = Math.sin(angle) * groupVelocity;
+        this.boss70.fallingBlocks.push({
+          x, y, vx: tangentX, vy: tangentY, angle, angularVelocity: groupVelocity * 0.01,
+          color: b.color, outline: b.outline
+        });
+      }
+      this.boss70.placedBlocks = placed.filter(b => !removeGroups.has(b.groupId));
+      for (const id of removeGroups) this.boss70.groupVelocities.delete(id);
+      this.recomputeBoss70HeightMap();
+    }
+    this.updateBoss70FallingBlocks();
+  }
+
+  updateBoss70FallingBlocks() {
+    const dt = 1 / 60;
+    const remaining = [];
+    for (const b of this.boss70.fallingBlocks) {
+      b.vy += SEESAW_GRAVITY_CONST * dt;
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.angle += b.angularVelocity * dt;
+      // 落下したブロックは画面下へ抜けて消える。横方向の画面端で
+      // 止めないことが、強い傾きで画面外へ落ちる挙動の要件。
+      if (b.y <= GAME_BOTTOM + BOSS70_FALL_MARGIN) remaining.push(b);
+    }
+    this.boss70.fallingBlocks = remaining;
+  }
+
+  // プレイヤーの上下移動をシーソー面・積みブロックと衝突解決する（簡易近似）
+  getBoss70SurfaceLocalY(localX) {
+    let surface = SEESAW_DECK_TOP_LOCAL_Y;
+    // 列の高さではなく、実際にそのX範囲を占有しているセルだけを見る。
+    // これで隣の高いブロックを、空中のプレイヤーへ誤って当てなくなる。
+    for (const b of this.boss70.placedBlocks) {
+      if (Math.abs(localX - b.localX) <= GRID_SIZE / 2 + 0.01) {
+        surface = Math.min(surface, b.localY - GRID_SIZE / 2);
+      }
+    }
+    return surface;
+  }
+
+  resolveBoss70Vertical(currX, currY, nextY, vy, pHalfW, pHalfH) {
+    const [localX] = seesawWorldToLocal(currX, currY, this.boss70.angle);
+    if (localX < -SEESAW_HALF_W || localX > SEESAW_HALF_W) return [nextY, false];
+    const sampleXs = [localX - pHalfW, localX, localX + pHalfW]
+      .filter(x => x >= -SEESAW_HALF_W && x <= SEESAW_HALF_W);
+    const surfaceLocalY = Math.min(...sampleXs.map(x => this.getBoss70SurfaceLocalY(x)));
+    const [, surfaceWorldY] = seesawLocalToWorld(localX, surfaceLocalY, this.boss70.angle);
+    const surfaceTopY = surfaceWorldY; // 面の上端(ワールドY)
+    if (vy >= 0) {
+      if (currY + pHalfH <= surfaceTopY && nextY + pHalfH >= surfaceTopY) {
+        return [surfaceTopY - pHalfH, true];
+      }
+      if (currY + pHalfH > surfaceTopY) {
+        // 既に面より下にいる異常値は面上へ補正
+        return [surfaceTopY - pHalfH, true];
+      }
+      return [nextY, false];
+    } else {
+      return [nextY, false];
+    }
+  }
+
+  updateBoss70Logic(state, player) {
+    if (this.boss70.cleared) return "victory";
+
+    // --- シーソー角度の物理積分（トルク = スプリング復元 + プレイヤー荷重 + 設置ブロック荷重） ---
+    let torque = -this.boss70.angle * SEESAW_SPRING_K;
+
+    const pHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+    const [pLocalX] = seesawWorldToLocal(player.x, player.y, this.boss70.angle);
+    const onSeesawX = (pLocalX >= -SEESAW_HALF_W && pLocalX <= SEESAW_HALF_W);
+    const pCol = Math.max(0, Math.min(SEESAW_COLS - 1, Math.floor((pLocalX + SEESAW_HALF_W) / GRID_SIZE)));
+    const pSurfaceLocalY = this.boss70.heightMap[pCol];
+    const [, pSurfaceWorldY] = seesawLocalToWorld(pLocalX, pSurfaceLocalY, this.boss70.angle);
+    const isOnSeesaw = onSeesawX && player.isGrounded && Math.abs((player.y + pHalfH) - pSurfaceWorldY) < 6;
+
+    if (isOnSeesaw) {
+      torque += (player.x - SEESAW_PIVOT_X) * PLAYER_WEIGHT_FORCE;
+      // ジャンプ入力自体のトルクはプレイヤー荷重(上の式)に内包されるため、角速度への直接付与は着地時のみ行う
+    }
+    if (isOnSeesaw && !this.boss70.wasGroundedOnSeesaw) {
+      this.boss70.angularVelocity += (player.x - SEESAW_PIVOT_X) * (LANDING_PRESS_IMPULSE / SEESAW_MOMENT) * 0.0005;
+    }
+    this.boss70.wasGroundedOnSeesaw = isOnSeesaw;
+
+    for (const b of this.boss70.placedBlocks) {
+      const [wx] = seesawLocalToWorld(b.localX, b.localY, this.boss70.angle);
+      torque += (wx - SEESAW_PIVOT_X) * BLOCK_CELL_WEIGHT;
+    }
+
+    const dt = 1 / 60.0;
+    const angularAcc = torque / SEESAW_MOMENT;
+    this.boss70.angularVelocity += angularAcc * dt;
+    // Pymunk の space.damping は「1秒あたりの減衰率」を damping^dt として毎ステップ掛ける仕様。
+    // ここを damping をそのまま1フレーム毎に掛けてしまうと過減衰になり、
+    // ほとんど角速度が育たず「シーソーがまったく傾かない」状態になってしまう。
+    this.boss70.angularVelocity *= Math.pow(SEESAW_SPACE_DAMPING, dt);
+    this.boss70.angle += this.boss70.angularVelocity * dt;
+    if (this.boss70.angle > MAX_TILT_RADIAN) { this.boss70.angle = MAX_TILT_RADIAN; this.boss70.angularVelocity = 0; }
+    if (this.boss70.angle < -MAX_TILT_RADIAN) { this.boss70.angle = -MAX_TILT_RADIAN; this.boss70.angularVelocity = 0; }
+
+    // 強く傾いたシーソー上のブロックを低い側へ滑らせ、端から落とす。
+    this.updateBoss70SlidingBlocks();
+
+    // ダメージ判定は updateBoss70ActiveBlock 側（着地ブロックとプレイヤーの重なり）でのみ行う。
+    // 傾き自体は上のクランプで35度に制限されるのみで、それ自体はダメージ要因ではない。
+
+    const actRes = this.updateBoss70ActiveBlock(state, player);
+    if (actRes === "damage") return "damage";
+
+    const targetY = (this.boss70.phase === 1) ? GAME_TOP + 7 * GRID_SIZE : GAME_TOP + 5 * GRID_SIZE;
+    const playerTop = player.y - pHalfH;
+
+    if (playerTop <= targetY) {
+      this.boss70.winTimer -= 1;
+      if (this.boss70.winTimer <= 0) {
+        if (this.boss70.phase === 1) {
+          this.boss70.phase = 2;
+          this.boss70.winTimer = BOSS70_WIN_TIMER_MAX;
+          this.resetBoss70Board();
+          return "phase_advance";
+        } else {
+          return "victory";
+        }
+      }
+    } else {
+      this.boss70.winTimer = Math.min(BOSS70_WIN_TIMER_MAX, this.boss70.winTimer + BOSS70_WIN_RECOVER_RATE);
+    }
+    return "running";
+  }
+
+  generate_puzzle_pattern() {
+    let grid = BOSS_30F_PHASES[this.boss30PhaseIndex % BOSS_30F_PHASES.length];
+    this.puzzleMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (grid[y][x] === 1) this.puzzleMap[y][x] = PUZZLE_BLUE_ID;
+        else if (grid[y][x] === 2) this.puzzleMap[y][x] = PUZZLE_RED_ID;
+      }
+    }
+  }
+
+  check_blue_complete(state) {
+    if (!this.puzzleMap) return false;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (this.puzzleMap[y][x] === PUZZLE_BLUE_ID && state.blockMap[y][x] < 1) return false;
+      }
+    }
+    return true;
+  }
+
+  check_red_filled(state) {
+    if (!this.puzzleMap) return false;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        if (this.puzzleMap[y][x] === PUZZLE_RED_ID && state.blockMap[y][x] >= 1) return true;
+      }
+    }
+    return false;
+  }
+
+  reset_30f_round(state) {
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.generate_puzzle_pattern();
+    this.boss30Timer = 3600;
+    this.trapActive = false;
+    this.trapTimer = 0;
+  }
+
+  advance_30f_phase(state) {
+    this.boss30PhaseIndex += 1;
+    this.reset_30f_round(state);
+  }
+
+  trigger_big_beam() {
+    if (this.bigBeamPhase === "none") { this.bigBeamPhase = "warning"; this.bigBeamTimer = BIG_BEAM_WARN_FRAMES; }
+  }
+
+  update_boss30_logic(state, playerGx, playerInvincible) {
+    if (this.bigBeamPhase !== "none") {
+      this.bigBeamTimer -= 1;
+      if (this.bigBeamPhase === "warning" && this.bigBeamTimer <= 0) {
+        this.bigBeamPhase = "firing"; this.bigBeamTimer = BIG_BEAM_FIRE_FRAMES;
+        this.reset_30f_round(state); // ビームは盤面のブロックを常に削除する（ギミック本体・無敵中でも発動）
+        if (playerGx !== 0 && playerGx !== MAP_WIDTH - 1 && playerInvincible === 0) return "damage";
+        return "beam_clear";
+      } else if (this.bigBeamPhase === "firing" && this.bigBeamTimer <= 0) {
+        this.bigBeamPhase = "none";
+      }
+      return "running";
+    }
+    this.boss30Timer -= 1;
+    if (this.boss30Timer <= 0) { this.trigger_big_beam(); return "running"; }
+    if (this.check_red_filled(state)) {
+      if (!this.trapActive) { this.trapActive = true; this.trapTimer = TRAP_GRACE_FRAMES; }
+      else { this.trapTimer -= 1; if (this.trapTimer <= 0) { this.trigger_big_beam(); return "running"; } }
+    } else { this.trapActive = false; this.trapTimer = 0; }
+    
+    if (this.check_blue_complete(state)) {
+      this.boss30Hp -= 1;
+      if (this.boss30Hp <= 0) return "victory";
+      else { this.advance_30f_phase(state); return "advance"; }
+    }
+    return "running";
+  }
+
+  init_boss40_state() {
+    this.boss40Step = 0; this.boss40Timer = 180; this.boss40SearchCount = 0;
+    this.boss40LaserPhase = "none"; this.boss40ActiveCols = []; this.boss40ActiveRows = [];
+  }
+
+  update_boss40_logic(player) {
+    this.bossTimer -= 1;
+    if (this.bossTimer <= 0) return "clear";
+    this.boss40Timer -= 1;
+    
+    const WARN_F = 90, FIRE_F = 60, CYCLE_F = WARN_F + FIRE_F;
+    if (this.boss40Step === 0) {
+      if (this.boss40Timer > 0) {
+        this.boss40LaserPhase = "none"; this.boss40ActiveCols = []; this.boss40ActiveRows = [];
+        return "running";
+      } else { this.boss40Step = 1; this.boss40Timer = CYCLE_F; this.boss40SearchCount = 0; }
+    }
+    if (this.boss40Timer <= 0) {
+      if (this.boss40Step === 7) {
+        this.boss40SearchCount += 1;
+        if (this.boss40SearchCount < 3) this.boss40Timer = CYCLE_F;
+        else { this.boss40SearchCount = 0; this.boss40Step += 1; this.boss40Timer = CYCLE_F; }
+      } else { this.boss40Step += 1; this.boss40Timer = CYCLE_F; }
+      if (this.boss40Step > 12) { this.boss40Step = 1; this.boss40SearchCount = 0; }
+    }
+    
+    this.boss40LaserPhase = (this.boss40Timer > FIRE_F) ? "warning" : "firing";
+    
+    if (this.boss40Step === 1) { this.boss40ActiveCols = []; this.boss40ActiveRows = [18, 19, 23, 24]; }
+    else if (this.boss40Step === 2) { this.boss40ActiveCols = [3,4,5,6,7,8,9,10,11,12]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 3) { this.boss40ActiveCols = [12,13,14,15]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 4) { this.boss40ActiveCols = [8,9,10,11]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 5) { this.boss40ActiveCols = [4,5,6,7]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 6) { this.boss40ActiveCols = [0,1,2,3]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 7) {
+      if (this.boss40Timer === CYCLE_F) {
+        let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+        let pGy = Math.floor((player.y - GAME_TOP) / GRID_SIZE);
+        this.boss40ActiveCols = [-1,0,1].map(i => Math.max(0, Math.min(15, pGx + i)));
+        this.boss40ActiveRows = [-1,0,1].map(i => Math.max(0, Math.min(24, pGy + i)));
+      }
+    }
+    else if (this.boss40Step === 8) { this.boss40ActiveCols = []; this.boss40ActiveRows = [16,17,18,19,20,21,22,23,24]; }
+    else if (this.boss40Step === 9) { this.boss40ActiveCols = [2,5,8,11,14]; this.boss40ActiveRows = [4,9,14,19,24]; }
+    else if (this.boss40Step === 10) { this.boss40ActiveCols = [8,9,10,11,12,13,14,15]; this.boss40ActiveRows = []; }
+    else if (this.boss40Step === 12) {
+      this.boss40ActiveCols = [4,5,6,7,8,9,10,11];
+      this.boss40ActiveRows = [6,7,8,9,10,11,12,13,14,15,16,17];
+    }
+    return "running";
+  }
+
+  // 【50Fボス専用追加分】毎フレームのフェーズ進行・ターゲット破砕走査ロジック[cite: 3]
+  update_boss50_logic(state) {
+    if (this.boss50Phase < 1 || this.boss50Phase > 3) return "running";
+    let targetShapeId = 19 + (this.boss50Phase - 1);
+    let count = 0;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let val = state.blockMap[y][x];
+        if (val >= 1 && Math.floor(val / 1000) === targetShapeId) count++;
+      }
+    }
+    this.boss50TargetRemaining = count;
+
+    if (!this.boss50PhaseBlockLocked) {
+      if (count > 0) this.boss50PhaseBlockLocked = true;
+      return "running";
+    }
+
+    if (count === 0) {
+      if (this.boss50Phase === 3) {
+        this.boss50Phase = 0;
+        return "victory";
+      } else {
+        this.boss50Phase += 1;
+        this.boss50PhaseBlockLocked = false;
+        this.boss50SpawnRequested = true; // 次のフェーズの強制ロード
+        state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0)); // 盤面全消去
+        return "phase_advance";
+      }
+    }
+    return "running";
+  }
+
+  // 【50Fボス専用追加分】強制割り込みスポーン判定[cite: 3]
+  getForcedSpawnShapeId() {
+    if (this.boss50SpawnRequested && this.boss50Phase >= 1 && this.boss50Phase <= 3) {
+      this.boss50SpawnRequested = false;
+      return 19 + (this.boss50Phase - 1);
+    }
+    return null;
+  }
+
+  // 【50Fボス専用追加分】盤面を走査した操作反転デバフ状態の取得[cite: 3]
+  getPlayerStatusEffects(state) {
+    let blockRev = false;
+    let playerRev = false;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let val = state.blockMap[y][x];
+        if (val >= 1) {
+          let sid = Math.floor(val / 1000);
+          if (sid === 19) blockRev = true;
+          if (sid === 20) playerRev = true;
+          if (sid === 21) { blockRev = true; playerRev = true; }
+        }
+      }
+    }
+    return { blockReversed: blockRev, playerReversed: playerRev };
+  }
+}
+const bossSys = new BossManager();
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+const _ghostColorCache = {};
+function darkenColor(hex, factor = 0.25) {
+  if (!hex.startsWith("#")) return "#333333";
+  if (_ghostColorCache[hex + factor]) return _ghostColorCache[hex + factor];
+  let r = parseInt(hex.slice(1,3),16);
+  let g = parseInt(hex.slice(3,5),16);
+  let b = parseInt(hex.slice(5,7),16);
+  r = Math.floor(r * factor); g = Math.floor(g * factor); b = Math.floor(b * factor);
+  const result = `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+  _ghostColorCache[hex + factor] = result;
+  return result;
+}
+
+function getOrdinal(n) {
+  const v = n % 100; if (v >= 11 && v <= 13) return "th";
+  switch (n % 10) { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th"; }
+}
+
+function capFloorAtBoss(state) {
+  if (state.floor >= 70 && !bossSys.boss70.cleared) state.floor = 70;
+  else if (state.floor >= 60 && !bossSys.boss60Cleared) state.floor = 60;
+  else if (state.floor >= 50 && !bossSys.boss50Cleared) state.floor = 50; // 【50F追加】
+  else if (state.floor >= 40 && !bossSys.boss40Cleared) state.floor = 40;
+  else if (state.floor >= 30 && !bossSys.boss30Cleared) state.floor = 30;
+  else if (state.floor >= 20 && !bossSys.targetReached) state.floor = 20;
+  else if (state.floor >= 10 && !bossSys.cursedBeamActive) state.floor = 10;
+}
+
+function flushLineClearQueue(state, awardScore = true) {
+  if (awardScore) state.score += SCORE_PER_LINE * state.lineClearQueue.length;
+  state.lineClearQueue = []; state.lineClearTimer = 0;
+}
+
+function getBeamCycle(floor) {
+  if (bossSys.cursedBeamActive) return 1800;
+  if (floor < 10) return Infinity;
+  if (floor >= 90) return 200;
+  return 600 - Math.floor((floor - 10) / 10) * 50;
+}
+
+function getFallInterval(floor) {
+  if (floor >= 90) return 6;
+  if (floor >= 80) return 7;
+  if (floor >= 70) return 8;
+  if (floor >= 60) return 9;
+  if (floor >= 50) return 10;
+  if (floor >= 40) return 12;
+  if (floor >= 30) return 14;
+  if (floor >= 20) return 16;
+  if (floor >= 10) return 18;
+  return 20;
+}
+
+// 【50Fボス専用追加分】渦巻き(ぐるぐる)模様のセル描画ロジック[cite: 2]
+function drawSwirlCell(ctx, cx, cy, shapeId, frameCounter) {
+  let direction = (shapeId === 19 || shapeId === 20 || shapeId === 21) ? -1 : 0;
+  if (direction === 0) return;
+  let angle = frameCounter * SWIRL_ROT_SPEED * direction;
+  let cosA = Math.cos(angle);
+  let sinA = Math.sin(angle);
+  let maxRadius = (GRID_SIZE / 2) - 5;
+  
+  ctx.save();
+  ctx.beginPath();
+  for (let i = 0; i <= SWIRL_STEPS; i++) {
+    let t = i / SWIRSteps;
+    let r = maxRadius * t;
+    let theta = -(t * SWIRL_MAX_TURNS * 2 * Math.PI);
+    let dx = r * Math.cos(theta);
+    let dy = r * Math.sin(theta);
+    // 回転行列の適用
+    let rx = dx * cosA - dy * sinA;
+    let ry = dx * sinA + dy * cosA;
+    if (i === 0) ctx.moveTo(cx + rx, cy + ry);
+    else ctx.lineTo(cx + rx, cy + ry);
+  }
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 4;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+}
+const SWIRSteps = SWIRL_STEPS;
+
+// ============================================================
+// シーン管理
+// ============================================================
+let scene = "title";
+let prevScene = "game";
+let _btnRects = {};
+let globalFrameCount = 0; // 【50F追加分】位相を保つための通しフレームカウンタ[cite: 2, 4]
+
+// ============================================================
+// クラス定義
+// ============================================================
+class TutorialState {
+  constructor() { this.reset(); }
+  currentStepData() { return this.stepIdx < TUTORIAL_STEPS.length ? TUTORIAL_STEPS[this.stepIdx] : null; }
+  isBlockFrozen() { let sd = this.currentStepData(); return sd ? sd.step <= 4 : false; }
+  isWaitingForAck() { return !this.started; }
+  reset() { this.stepIdx = 0; this.isCleared = false; this.flags = {}; this.initialVal = 0; this.stepTimer = 0; this._needsSetup = true; this.blockIndex = 0; this.started = false; }
+  advance() { this.stepIdx += 1; this.isCleared = false; this.flags = {}; this.initialVal = 0; this.stepTimer = 0; this._needsSetup = true; this.started = false; }
+  setCleared() { this.isCleared = true; }
+}
+
+function tutSetupStep(tutState, state, player, fb, beam = null) {
+  tutState._needsSetup = false;
+  const sd = tutState.currentStepData(); if (!sd) return;
+  if (sd.step === 2) tutState.initialVal = player.x;
+  else if (sd.step === 5) tutState.initialVal = fb.x;
+  else if (sd.step === 9) {
+    tutState.initialVal = state.score;
+    state.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    for (let x = 0; x < MAP_WIDTH; x++) state.blockMap[MAP_HEIGHT - 1][x] = 1001;
+    state.blockMap[MAP_HEIGHT - 1][Math.floor(MAP_WIDTH / 2)] = 0;
+    state.blockMap[MAP_HEIGHT - 1][Math.floor(MAP_WIDTH / 2) - 1] = 0;
+  } else if (sd.step === 10) {
+    // コンボブロックのデモ用に、体験できる分をあらかじめ付与しておく
+    state.comboBlocks = 3;
+    state.comboEverActivated = true;
+    tutState.initialVal = state.comboBlocks;
+  } else if (sd.step === 11) {
+    tutState.initialVal = player.hp;
+    if (beam) { beam.phase = "wait"; beam.timer = BEAM_CYCLE - BEAM_WARNING - 60; }
+  }
+}
+
+function tutCheckStepCondition(tutState, state, player, fb, beam) {
+  tutState.stepTimer += 1; if (tutState.isCleared) return;
+  const sd = tutState.currentStepData(); if (!sd) return;
+  const ctype = sd.condition_type;
+  if (ctype === "player_move") { if (Math.abs(player.x - tutState.initialVal) > 80) tutState.setCleared(); }
+  else if (ctype === "player_jump") { if (tutState.flags.jumped) tutState.setCleared(); }
+  else if (ctype === "player_crouch") { if (player.isCrouching) tutState.setCleared(); }
+  else if (ctype === "block_move") { if (Math.abs(fb.x - tutState.initialVal) > 0) tutState.setCleared(); }
+  else if (ctype === "block_rotate") { if (tutState.flags.rotated) tutState.setCleared(); }
+  else if (ctype === "block_speed") { if (tutState.flags.down_pressed) tutState.setCleared(); }
+  else if (ctype === "hard_drop") { if (tutState.flags.hard_dropped) tutState.setCleared(); }
+  else if (ctype === "line_clear") { if (state.score > tutState.initialVal) tutState.setCleared(); }
+  else if (ctype === "combo_use") { if (state.comboBlocks < tutState.initialVal) tutState.setCleared(); }
+  else if (ctype === "beam_evade") {
+    if (tutState.flags.beam_fired && player.hp >= tutState.initialVal) tutState.setCleared();
+    else if (player.hp < tutState.initialVal) { tutState.flags.beam_fired = false; tutState.initialVal = player.hp; }
+  }
+}
+
+class GameState {
+  constructor() {
+    this.blockMap = Array.from({length: MAP_HEIGHT}, () => new Array(MAP_WIDTH).fill(0));
+    this.nextSerial = 1; this.blockCount = 0; this.rareCountdown = Math.floor(Math.random() * 5) + 28;
+    this.keyStates = { a:false, s:false, d:false, space:false, down:false, up:false, left:false, right:false }; this.lastHkey = "";
+    this.spaceTriggered = false; this.sTriggered = false; // 60F: ジャンプ/潜行のワンショット入力トリガー
+    this.score = 0; this.floor = 1; this.floorLines = 0;
+    this.comboCount = 0; this.comboBlocks = 0; this.pendingComboBlocks = 0; this.comboTimer = 0; this.comboEverActivated = false;
+    // 【50Fボス専用】通常フロアのコンボブロックとは別管理のプール[cite: 4]
+    this.boss50ComboCount = 0; this.boss50ComboBlocks = 0; this.boss50PendingComboBlocks = 0; this.boss50ComboTimer = 0; this.boss50ComboEverActivated = false;
+    this.gravityTimer = 0; this.pushedBlockIds = new Set(); this.pushGravityTimer = 0; this.lineClearQueue = []; this.lineClearTimer = 0; this.nextBlockData = null;
+    this.notifiedFloor = 1; this.bgAnim = { active: false, y: 0, text: "", color: "" };
+    this.recentNormalShapeIds = [];
+  }
+  getBlockCache() {
+    let cache = {};
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let bid = this.blockMap[y][x]; if (bid >= 1) { if (!cache[bid]) cache[bid] = []; cache[bid].push([x, y]); }
+      }
+    }
+    return cache;
+  }
+}
+
+class Player {
+  constructor() { this.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); this.y = GAME_BOTTOM - 20; this.vx = 0; this.vy = 0; this.isGrounded = false; this.pushTimerL = 0; this.pushTimerR = 0; this.hp = MAX_HP; this.invincible = 0; this.blinkVisible = true; this.isCrouching = false; this.prevHalfH = P_HALF_H; }
+}
+
+class BeamState { constructor() { this.timer = 0; this.col = 0; this.showTimer = 0; this.phase = "wait"; this.blinkOn = true; } }
+class BlockMoveState { constructor() { this.leftHeld = false; this.rightHeld = false; this.holdFrames = 0; this.repeatAcc = 0; } }
+
+class FallingBlock {
+  constructor(state = null) { this.x = 0; this.y = 0; this.timer = 0; this.shapeId = 1; this.shape = []; this.color = "#ffdd00"; this.outline = "#cc9900"; this.spawnBlock(state || new GameState(), null, true, false); }
+  _pickBlockData(state, isTutorial, tutState) {
+    if (isTutorial && tutState) { let normal = BLOCKS.filter(b => b.shape_id <= 11); return normal[tutState.blockIndex % normal.length]; }
+    if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) { return BLOCKS.find(b => b.shape_id === RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)]); }
+    // 通常ブロックの抽選時に50Fボス用ブロック(19〜21)が混ざらないようガード[cite: 4]
+    let normal = BLOCKS.filter(b => b.shape_id <= 11);
+    let candidates = normal.filter(b => !state.recentNormalShapeIds.includes(b.shape_id));
+    if (candidates.length === 0) candidates = normal;
+    let choice = candidates[Math.floor(Math.random() * candidates.length)];
+    state.recentNormalShapeIds.push(choice.shape_id);
+    if (state.recentNormalShapeIds.length > NORMAL_BLOCK_NO_REPEAT_WINDOW) state.recentNormalShapeIds.shift();
+    return choice;
+  }
+  spawnBlock(state, tutState = null, isInit = false, isTutorial = false) {
+    if (!isInit) { state.blockCount += 1; state.rareCountdown -= 1; }
+    if (!state.nextBlockData) state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    let data = (isTutorial && tutState) ? BLOCKS.filter(b => b.shape_id <= 11)[tutState.blockIndex % BLOCKS.filter(b => b.shape_id <= 11).length] : state.nextBlockData;
+    if (isTutorial && tutState) tutState.blockIndex += 1;
+    state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    if (!isTutorial && RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) state.rareCountdown = Math.floor(Math.random() * 5) + 28;
+    this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline;
+    const maxDx = Math.max(...this.shape.map(([dx]) => dx));
+    this.x = Math.floor((MAP_WIDTH - maxDx) / 2);
+    this.y = 0; this.timer = 0;
+    if (bossSys.isBoss60Context()) this.y = bossSys.getBoss60SpawnY(this.shape, this.y);
+  }
+  // 【50Fボス専用追加分】フェーズターゲットブロックの強制割り込みスポーン経路[cite: 4]
+  spawnBlockForced(shapeId) {
+    let data = BLOCKS.find(b => b.shape_id === shapeId);
+    if (!data) return;
+    this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline;
+    const maxDx = Math.max(...this.shape.map(([dx]) => dx));
+    this.x = Math.floor((MAP_WIDTH - maxDx) / 2); this.y = 0; this.timer = 0;
+    if (bossSys.isBoss60Context()) this.y = bossSys.getBoss60SpawnY(this.shape, this.y);
+  }
+  getCells() { return this.shape.map(([dx,dy]) => [this.x + dx, this.y + dy]); }
+  getGhostCells(state) {
+    let ghostY = this.y;
+    if (bossSys.isBoss60UpwardActive()) {
+      while (!checkCollision(state, this, this.x, ghostY - 1)) ghostY--;
+    } else {
+      while (!checkCollision(state, this, this.x, ghostY + 1)) ghostY++;
+    }
+    if (ghostY === this.y) return []; return this.shape.map(([dx,dy]) => [this.x + dx, ghostY + dy]);
+  }
+  rotateLeft(state) {
+    if (this.shapeId === 19 || this.shapeId === 20 || this.shapeId === 21) return; // 【50F追加分】回転不可制限[cite: 4]
+    let ns = this.shape.map(([dx,dy]) => [dy, -dx]);
+    const minX = Math.min(...ns.map(([dx]) => dx)), minY = Math.min(...ns.map(([,dy]) => dy));
+    ns = ns.map(([dx,dy]) => [dx - minX, dy - minY]); if (!this._collides(state, ns)) this.shape = ns;
+  }
+  rotateRight(state) {
+    if (this.shapeId === 19 || this.shapeId === 20 || this.shapeId === 21) return;
+    let ns = this.shape.map(([dx,dy]) => [-dy, dx]);
+    const minX = Math.min(...ns.map(([dx]) => dx)), minY = Math.min(...ns.map(([,dy]) => dy));
+    ns = ns.map(([dx,dy]) => [dx - minX, dy - minY]); if (!this._collides(state, ns)) this.shape = ns;
+  }
+  _collides(state, shape) {
+    return _shapeCollides(state, shape, this.x, this.y);
+  }
+}
+
+// ============================================================
+// 衝突・更新判定ロジック
+// ============================================================
+function _shapeCollides(state, shape, ox, oy) {
+  for (const [dx,dy] of shape) {
+    const tx = ox + dx, ty = oy + dy;
+    if (tx < 0 || tx >= MAP_WIDTH) return true;
+    if (bossSys.isBoss60CeilingBlocked(ty)) return true;
+    if (ty >= 0 && ty < MAP_HEIGHT && state.blockMap[ty][tx] >= 1) return true;
+  }
+  return false;
+}
+function checkCollision(state, fb, nx, ny) { return _shapeCollides(state, fb.shape, nx, ny); }
+
+function lockBlock(state, fb) {
+  const mapValue = fb.shapeId * 1000 + state.nextSerial;
+  for (const [gx,gy] of fb.getCells()) { if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT) state.blockMap[gy][gx] = mapValue; }
+  state.nextSerial += 1;
+}
+
+function checkLineClear(state, countCombo = true) {
+  let existingRows = new Set(state.lineClearQueue); let newFullRows = [];
+  for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+    if (!state.blockMap[y].includes(0) && !existingRows.has(y) && !state.blockMap[y].includes(9999)) newFullRows.push(y);
+  }
+  if (newFullRows.length === 0) return;
+  if (countCombo) {
+    let lines = newFullRows.length;
+    if (scene === "boss_50f") {
+      // 【50Fボス専用】通常フロアのコンボブロックとは独立したプールに加算[cite: 4]
+      if (state.boss50ComboTimer <= 0) state.boss50ComboCount = 0;
+      state.boss50ComboCount += lines; state.boss50ComboTimer = COMBO_BUFFER_FRAMES;
+      state.boss50ComboEverActivated = true; state.boss50PendingComboBlocks += lines;
+    } else {
+      if (state.comboTimer <= 0) state.comboCount = 0;
+      let prevCount = state.comboCount; state.comboCount += lines; state.comboTimer = COMBO_BUFFER_FRAMES;
+      state.comboEverActivated = true; state.pendingComboBlocks += lines;
+      if (!bossSys.isBossActive) {
+        let prevBonus = Math.floor(prevCount / 4), newBonus = Math.floor(state.comboCount / 4);
+        if (newBonus > prevBonus) { state.floor += (newBonus - prevBonus); capFloorAtBoss(state); }
+      }
+    }
+  }
+  for (let row of newFullRows) state.lineClearQueue.push(row);
+}
+
+function enqueueNewFullRows(state) {
+  const existingRows = new Set(state.lineClearQueue);
+  for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+    if (!state.blockMap[y].includes(0) && !existingRows.has(y)) state.lineClearQueue.push(y);
+  }
+}
+
+function processLineClearQueue(state) {
+  if (state.lineClearQueue.length === 0) return;
+  state.lineClearTimer += 1; if (state.lineClearTimer < LINE_CLEAR_INTERVAL) return;
+  state.lineClearTimer = 0; let row = state.lineClearQueue.shift();
+  if (state.blockMap[row].includes(0)) { enqueueNewFullRows(state); return; }
+
+  if (bossSys.isBoss60Upward()) {
+    for (let ty = row; ty < MAP_HEIGHT - 1; ty++) state.blockMap[ty] = [...state.blockMap[ty + 1]];
+    state.blockMap[MAP_HEIGHT - 1] = new Array(MAP_WIDTH).fill(0);
+  } else {
+    for (let ty = row; ty > 0; ty--) state.blockMap[ty] = [...state.blockMap[ty - 1]];
+    state.blockMap[0] = new Array(MAP_WIDTH).fill(0);
+  }
+  state.score += SCORE_PER_LINE;
+
+  if (bossSys.isBoss60Context()) bossSys.correctPlayerAfterDrop(state, player);
+
+  if (bossSys.isBoss60Context()) {
+    let res = bossSys.onBoss60LineCleared(1);
+    if (res === "victory") {
+      bossSys.isBossActive = false; bossSys.boss60Cleared = true; scene = "game"; player.hp = MAX_HP;
+      teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      bossSys.restorePreviousMap(state); state.floor = 61; state.floorLines = 0; state.notifiedFloor = 61;
+      flushLineClearQueue(state, false);
+      return;
+    }
+  }
+
+  if (bossSys.isBossActive && scene === "boss_10f") {
+    bossSys.bossHp -= 1;
+    if (bossSys.bossHp <= 0) {
+      bossSys.isBossActive = false; scene = "game"; player.hp = MAX_HP; teleportPlayer(player);
+      player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      bossSys.restorePreviousMap(state); bossSys.cursedBeamActive = true; state.floor = 11; state.notifiedFloor = 11;
+      flushLineClearQueue(state, false);
+    }
+  } else if (bossSys.isBossActive && scene === "boss_50f") {
+    // 【50Fボス専用追加分】ライン消去時の進行判定割り込み[cite: 4]
+    _flush_line_clear_queue_50f();
+  } else if (!bossSys.isBossActive) {
+    state.floorLines += 1; if (state.floorLines >= LINES_PER_FLOOR) { state.floor += 1; state.floorLines = 0; capFloorAtBoss(state); }
+  }
+
+  if (bossSys.isBoss60Upward()) {
+    state.lineClearQueue = state.lineClearQueue.map(r => r > row ? r + 1 : r);
+  } else {
+    state.lineClearQueue = state.lineClearQueue.map(r => r < row ? r - 1 : r);
+  }
+  enqueueNewFullRows(state);
+}
+
+// 【50F追加分】50F専用のライン消去後判定呼び出し用関数[cite: 4]
+function _flush_line_clear_queue_50f() {
+  let res = bossSys.update_boss50_logic(state);
+  if (res === "phase_advance") {
+    let fid = bossSys.getForcedSpawnShapeId();
+    if (fid) fb.spawnBlockForced(fid);
+    flushLineClearQueue(state, false);
+  } else if (res === "victory") {
+    bossSys.isBossActive = false; bossSys.boss50Cleared = true; scene = "game"; player.hp = MAX_HP;
+    teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
+    state.floor = 51; state.floorLines = 0; state.notifiedFloor = 51; flushLineClearQueue(state, false);
+    // 【50Fボス専用】クリア時、50F専用コンボプールを破棄し通常フロアのコンボブロック状態に戻す[cite: 4]
+    state.boss50ComboCount = 0; state.boss50ComboBlocks = 0; state.boss50PendingComboBlocks = 0; state.boss50ComboTimer = 0; state.boss50ComboEverActivated = false;
+  }
+}
+
+function tryDropBlocksByOne(state, blockIds, blockCache, extraBlockedCells = null) {
+  let settledIds = new Set();
+  for (let blockId of Array.from(blockIds).sort((a, b) => a - b)) {
+    if (blockId === 9999 || is_fixed_terrain(blockId)) { settledIds.add(blockId); continue; }
+    let cells = blockCache[blockId];
+    if (!cells || cells.length === 0) { settledIds.add(blockId); continue; }
+    let canDrop = true;
+    for (const [cx, cy] of cells) {
+      let ny = cy + 1;
+      if (ny >= MAP_HEIGHT) { canDrop = false; break; }
+      if (state.blockMap[ny][cx] >= 1 && state.blockMap[ny][cx] !== blockId) { canDrop = false; break; }
+      if (extraBlockedCells && extraBlockedCells.has(`${cx},${ny}`)) { canDrop = false; break; }
+    }
+    if (canDrop) {
+      cells.slice().sort((a, b) => b[1] - a[1]).forEach(([cx, cy]) => { state.blockMap[cy + 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+    } else settledIds.add(blockId);
+  }
+  return settledIds;
+}
+
+function findUnsupportedBlocksAbove(state, cells, excludeId = null) {
+  let topCells = {};
+  for (const [cx, cy] of cells) { if (!(cx in topCells) || cy < topCells[cx]) topCells[cx] = cy; }
+  let foundIds = new Set();
+  for (const cx in topCells) {
+    let ay = topCells[cx] - 1;
+    if (ay < 0) continue;
+    let aboveId = state.blockMap[ay][cx];
+    if (aboveId >= 1 && aboveId !== excludeId) foundIds.add(aboveId);
+  }
+  return foundIds;
+}
+
+function applyGravityPushOnly(state, fb) {
+  if (scene === "boss_60f" && bossSys.isBoss60Transition()) return;
+
+  if (bossSys.isBoss60UpwardActive()) {
+    if (state.pushedBlockIds.size === 0) return;
+    const baseInterval = state.keyStates.up ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
+    if (bossSys.updateBoss60Gravity(state, fb, baseInterval, true, tryDropBlocksByOne, findUnsupportedBlocksAbove, player)) {
+      checkLineClear(state, true);
+    }
+    return;
+  }
+
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  if (state.pushedBlockIds.size === 0) return;
+
+  state.pushGravityTimer += 1; const interval = bossSys.getAdjustedFallInterval(state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor));
+  if (state.pushGravityTimer < interval) return;
+  state.pushGravityTimer = 0;
+  const fbCells = new Set(fb.getCells().map(c => `${c[0]},${c[1]}`)); const blockCache = state.getBlockCache();
+  let existingIds = new Set(); state.pushedBlockIds.forEach(id => { if (blockCache[id]) existingIds.add(id); });
+  state.pushedBlockIds = existingIds; if (state.pushedBlockIds.size === 0) return;
+
+  let settledIds = tryDropBlocksByOne(state, state.pushedBlockIds, blockCache, fbCells);
+  let movedIds = new Set(Array.from(state.pushedBlockIds).filter(id => !settledIds.has(id)));
+
+  if (bossSys.isBoss60Context()) bossSys.correctPlayerAfterDrop(state, player);
+
+  let chainIds = new Set();
+  movedIds.forEach(blockId => { let cells = blockCache[blockId] || []; findUnsupportedBlocksAbove(state, cells, blockId).forEach(x => chainIds.add(x)); });
+  chainIds.forEach(id => state.pushedBlockIds.add(id));
+  settledIds.forEach(id => state.pushedBlockIds.delete(id));
+
+  if (movedIds.size > 0) fb.timer = interval;
+  if (settledIds.size > 0) checkLineClear(state, true);
+}
+
+function applyGravityToBlocks(state) {
+  if (scene === "boss_60f" && bossSys.isBoss60Transition()) return;
+
+  if (bossSys.isBoss60UpwardActive()) {
+    const baseInterval = state.keyStates.up ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
+    if (bossSys.updateBoss60Gravity(state, null, baseInterval, false, tryDropBlocksByOne, null, player)) {
+      checkLineClear(state, true);
+    }
+    return;
+  }
+
+  state.gravityTimer += 1; const interval = bossSys.getAdjustedFallInterval(state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor));
+  if (state.gravityTimer < interval) return;
+  state.gravityTimer = 0;
+
+  const blockCache = state.getBlockCache();
+  let settledIds = tryDropBlocksByOne(state, Object.keys(blockCache).map(Number), blockCache);
+
+  if (bossSys.isBoss60Context()) bossSys.correctPlayerAfterDrop(state, player);
+  if (settledIds.size > 0) checkLineClear(state, true);
+}
+
+function useComboBlock(state, fb) {
+  // 【50Fボス専用】50Fボス戦中は専用プール(boss50ComboBlocks)を使用し、
+  // 通常フロアで貯めたコンボブロック(comboBlocks)は消費できないようにする[cite: 4]
+  const inBoss50 = (scene === "boss_50f");
+  if (inBoss50) {
+    if (state.boss50ComboBlocks <= 0) return;
+  } else {
+    if (state.comboBlocks <= 0 || scene.startsWith("boss_")) return;
+  }
+  for (let gaps = 1; gaps < MAP_WIDTH; gaps++) {
+    for (let y = MAP_HEIGHT - 1; y >= 0; y--) {
+      if (state.blockMap[y].includes(9999)) continue;
+      let emptyCols = []; for (let x=0; x<MAP_WIDTH; x++) if (state.blockMap[y][x] === 0) emptyCols.push(x);
+      if (emptyCols.length === gaps) {
+        let px = emptyCols[Math.floor(emptyCols.length / 2)], mapValue = 1 * 1000 + state.nextSerial;
+        state.blockMap[y][px] = mapValue; state.nextSerial += 1;
+        if (inBoss50) state.boss50ComboBlocks -= 1; else state.comboBlocks -= 1;
+        checkLineClear(state, false); return;
+      }
+    }
+  }
+}
+
+function teleportPlayer(p) { p.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); p.y = GAME_TOP + 100; p.vy = 0; p.isGrounded = false; p.prevHalfH = P_HALF_H; }
+function teleportPlayerBoss20(p) { p.x = GAME_LEFT + 8 * GRID_SIZE; p.y = GAME_BOTTOM - P_HALF_H; p.vy = 0; p.isGrounded = false; p.prevHalfH = P_HALF_H; }
+
+function applyPlayerDamage(p) {
+  p.hp = Math.max(0, p.hp - 1); p.invincible = INVINCIBLE_FRAMES;
+  if (p.hp <= 0) scene = "gameover";
+  else if (scene === "boss_20f" || scene === "boss_40f") teleportPlayerBoss20(p);
+  else teleportPlayer(p);
+}
+
+function checkCrush(state, fb, p) {
+  if (p.invincible > 0 || !p.isGrounded) return;
+  // 【当たり判定修復】マージン無しだと、斜めブロックが「1マス空けて浮いた」状態で着地した際に
+  // プレイヤーの頭のてっぺんがほんの数px掠っただけで押しつぶし判定になってしまうため、
+  // 半マス(GRID_SIZE/2)分のマージンを設けて「実際にしっかり重なった」場合のみ反応するようにする。
+  const headGy = Math.floor((p.y - (P_HALF_H - GRID_SIZE / 2) - GAME_TOP) / GRID_SIZE);
+  const lx = Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const rx = Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+  const fbCells = (scene === "boss_20f" || scene === "boss_40f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+  for (const cx of [lx, rx]) {
+    if (cx < 0 || cx >= MAP_WIDTH) continue;
+    if (fbCells.has(`${cx},${headGy}`) || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999)) {
+      applyPlayerDamage(p); break;
+    }
+  }
+}
+
+function checkCrushHarddrop(state, p) {
+  if (p.invincible > 0) return;
+  const checkXs = [Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE), Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE)];
+  const checkYs = [Math.floor((p.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE), Math.floor((p.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)];
+  for (const cy of checkYs) for (const cx of checkXs) {
+    if (cx >= 0 && cx < MAP_WIDTH && cy >= 0 && cy < MAP_HEIGHT && state.blockMap[cy][cx] >= 1 && state.blockMap[cy][cx] !== 9999) {
+      applyPlayerDamage(p); return;
+    }
+  }
+}
+
+// 【当たり判定修復】ハードドロップは瞬間移動のため、着地位置だけを見る checkCrushHarddrop では
+// 「落下経路の途中でプレイヤーの体をすり抜ける」（空中にいる時／足場からはみ出している時に、
+// ブロックがプレイヤーの下の遠い床まで落ちてしまい、最終着地位置とプレイヤー位置がズレて
+// 何も検知できない）ケースを捕捉できない。そのため、1マス落ちるたびに現在の fb セルと
+// プレイヤーの重なりを確認する「通過判定」を別途用意する。
+function checkCrushHarddropSweep(state, fb, p) {
+  if (p.invincible > 0) return false;
+  const checkXs = [Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE), Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE)];
+  const checkYs = [Math.floor((p.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE), Math.floor((p.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)];
+  const fbCells = new Set(fb.getCells().map(([x, y]) => `${x},${y}`));
+  for (const cy of checkYs) for (const cx of checkXs) {
+    if (fbCells.has(`${cx},${cy}`)) { applyPlayerDamage(p); return true; }
+  }
+  return false;
+}
+
+function checkBoss20fGoal(state, p) {
+  const corners = [
+    [p.x - P_HALF_W + 2, p.y - P_HALF_H + 2], [p.x + P_HALF_W - 2, p.y - P_HALF_H + 2],
+    [p.x - P_HALF_W + 2, p.y + P_HALF_H - 2], [p.x + P_HALF_W - 2, p.y + P_HALF_H - 2]
+  ];
+  for (const [px, py] of corners) {
+    let gx = Math.floor((px - GAME_LEFT) / GRID_SIZE), gy = Math.floor((py - GAME_TOP) / GRID_SIZE);
+    if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT && state.blockMap[gy][gx] === 9999) return true;
+  }
+  return false;
+}
+
+function updateBeam(beam, player, forcedCycle = null) {
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_60f" || scene === "boss_70f") { beam.timer = 0; beam.phase = "wait"; return; }
+  const currentCycle = forcedCycle !== null ? forcedCycle : getBeamCycle(state.floor);
+  if (currentCycle === Infinity && !bossSys.isBossActive) { beam.timer = 0; beam.phase = "wait"; return; }
+  let cycle = (bossSys.isBossActive && !bossSys.cursedBeamActive) ? 600 : currentCycle;
+  beam.timer += 1;
+  if (beam.phase === "wait" && beam.timer >= cycle - BEAM_WARNING) {
+    beam.phase = "warning"; let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+    beam.col = Math.max(0, Math.min(MAP_WIDTH - BEAM_WIDTH, pGx - Math.floor(BEAM_WIDTH / 2)));
+  }
+  if (beam.phase === "warning") beam.blinkOn = (Math.floor(beam.timer / 8) % 2 === 0);
+  if (beam.phase === "warning" && beam.timer >= cycle) { beam.phase = "firing"; beam.showTimer = BEAM_SHOW_FRAMES; beam.timer = 0; }
+  if (beam.phase === "firing") {
+    beam.showTimer -= 1;
+    if (player.invincible === 0) {
+      let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+      if (beam.col <= pGx && pGx < beam.col + BEAM_WIDTH) applyPlayerDamage(player);
+    }
+    if (beam.showTimer <= 0) beam.phase = "wait";
+  }
+}
+
+function updateBlockMove(state, fb, bms) {
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  if (bms.leftHeld === bms.rightHeld) { bms.holdFrames = 0; bms.repeatAcc = 0; return; }
+  
+  // 【50Fボス専用追加分】ブロック操作反転ステータスの取得・反映[cite: 4]
+  let isBlockReversed = false;
+  if (scene === "boss_50f") {
+    let effects = bossSys.getPlayerStatusEffects(state);
+    isBlockReversed = effects.blockReversed;
+  }
+
+  let dir = bms.leftHeld ? -1 : 1;
+  if (isBlockReversed) dir = -dir; // 左右進行方向の鏡像反転
+
+  if (bms.holdFrames === 0 || (bms.holdFrames >= BLOCK_MOVE_INITIAL_DELAY && ++bms.repeatAcc >= BLOCK_MOVE_REPEAT_DELAY)) {
+    if (bms.holdFrames > 0) bms.repeatAcc = 0; if (!checkCollision(state, fb, fb.x + dir, fb.y)) fb.x += dir;
+  }
+  bms.holdFrames += 1;
+}
+
+function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  const isUpward = bossSys.isBoss60UpwardActive();
+  const isFast = isUpward ? !!state.keyStates.up : !!state.keyStates.down;
+  let interval = isFast ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
+  interval = bossSys.getAdjustedFallInterval(interval);
+  fb.timer += 1; if (fb.timer < interval) return;
+  fb.timer = 0;
+
+  if (isUpward) {
+    if (!checkCollision(state, fb, fb.x, fb.y - 1)) fb.y -= 1;
+    else {
+      lockBlock(state, fb);
+      fb.spawnBlock(state, tutState, false, isTutorial);
+      checkLineClear(state, true);
+    }
+    return;
+  }
+
+  if (!checkCollision(state, fb, fb.x, fb.y + 1)) fb.y += 1;
+  else {
+    lockBlock(state, fb);
+    
+    // 【50Fボス専用追加分】固定時、フェーズ進行用割り込み要求があれば強制割り当て[cite: 4]
+    let forcedId = bossSys.getForcedSpawnShapeId();
+    if (forcedId) {
+      fb.spawnBlockForced(forcedId);
+    } else {
+      fb.spawnBlock(state, tutState, false, isTutorial);
+    }
+    checkLineClear(state, true);
+    
+    // 【50F追加分】固定直後にターゲット消去されたかどうかの通常走査判定[cite: 4]
+    if (scene === "boss_50f") _flush_line_clear_queue_50f();
+  }
+}
+
+function isSolidAll(state, fb, gx, gy) {
+  if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
+  if (state.blockMap[gy][gx] === 9999) return false;
+  if (state.blockMap[gy][gx] >= 1) return true;
+  if (scene === "boss_20f" || scene === "boss_40f") return false;
+  for (const [fx,fy] of fb.getCells()) { if (fx === gx && fy === gy) return true; }
+  return false;
+}
+
+function updatePlayer(state, fb, player) {
+  const ks = state.keyStates;
+
+  // 【50Fボス専用追加分】プレイヤー操作反転ステータスの取得[cite: 4]
+  let isPlayerReversed = false;
+  if (scene === "boss_50f") {
+    let effects = bossSys.getPlayerStatusEffects(state);
+    isPlayerReversed = effects.playerReversed;
+  }
+
+  const isCrouching = !!ks.s;
+  player.isCrouching = isCrouching;
+  const curPHalfH = isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+  const curMoveSpeed = isCrouching ? CROUCH_MOVE_SPEED : MOVE_SPEED;
+
+  // しゃがみ／立ち上がりの切り替え時、足元の接地位置を保ったままその場で身長だけ縮む・伸びるようにする
+  // （切り替え直後に重力任せで「落ちる」ような見た目になるのを防ぐ）
+  if (player.prevHalfH === undefined) player.prevHalfH = P_HALF_H;
+  if (player.isGrounded && curPHalfH !== player.prevHalfH) {
+    const groundedFootY = player.y + player.prevHalfH;
+    player.y = groundedFootY - curPHalfH;
+  }
+  player.prevHalfH = curPHalfH;
+
+  player.vx = 0;
+  if (ks.a && ks.d) player.vx = (state.lastHkey === "a") ? -curMoveSpeed : curMoveSpeed;
+  else if (ks.a) player.vx = -curMoveSpeed; else if (ks.d) player.vx = curMoveSpeed;
+
+  if (isPlayerReversed) player.vx = -player.vx; // 【50F追加】左右入力速度の鏡像反転
+
+  const upperY = Math.floor((player.y - (curPHalfH - 1) - GAME_TOP) / GRID_SIZE);
+  const lowerY = Math.floor((player.y + (curPHalfH - 1) - GAME_TOP) / GRID_SIZE);
+  const nextLx = Math.floor((player.x + player.vx - (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  const nextRx = Math.floor((player.x + player.vx + (P_HALF_W - 1) - GAME_LEFT) / GRID_SIZE);
+  let hittingBlock = false, blockCache = null;
+
+  if (scene === "boss_70f") {
+    player.x = bossSys.resolveBoss70Horizontal(player.x, player.x + player.vx, player.y, P_HALF_W, curPHalfH);
+  } else {
+    for (const gridY of [upperY, lowerY]) {
+      if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
+      if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999) {
+        hittingBlock = true; let targetId = state.blockMap[gridY][nextLx];
+        if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
+        if (!blockCache) blockCache = state.getBlockCache();
+        let cells = blockCache[targetId] || [];
+        let canPush = cells.every(([cx,cy]) => cx - 1 >= 0 && (state.blockMap[cy][cx-1] === 0 || state.blockMap[cy][cx-1] === targetId));
+        player.pushTimerR = 0;
+        if (canPush) {
+          player.pushTimerL += 1;
+          if (player.pushTimerL >= PUSH_DELAY) {
+            cells.sort((a,b) => a[0]-b[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx-1] = targetId; state.blockMap[cy][cx] = 0; });
+            player.pushTimerL = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
+          } else player.vx = 0;
+        } else player.vx = 0;
+        break;
+      }
+      if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999) {
+        hittingBlock = true; let targetId = state.blockMap[gridY][nextRx];
+        if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
+        if (!blockCache) blockCache = state.getBlockCache();
+        let cells = blockCache[targetId] || [];
+        let canPush = cells.every(([cx,cy]) => cx + 1 < MAP_WIDTH && (state.blockMap[cy][cx+1] === 0 || state.blockMap[cy][cx+1] === targetId));
+        player.pushTimerL = 0;
+        if (canPush) {
+          player.pushTimerR += 1;
+          if (player.pushTimerR >= PUSH_DELAY) {
+            cells.sort((a,b) => b[0]-a[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx+1] = targetId; state.blockMap[cy][cx] = 0; });
+            player.pushTimerR = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
+          } else player.vx = 0;
+        } else player.vx = 0;
+        break;
+      }
+    }
+    player.x += player.vx;
+  }
+
+  if (!hittingBlock) { player.pushTimerL = 0; player.pushTimerR = 0; }
+  player.x = Math.max(GAME_LEFT + P_HALF_W, Math.min(GAME_RIGHT - P_HALF_W, player.x));
+
+  if (player.vy === null || player.vy === undefined) player.vy = 0;
+
+  if (!player.isGrounded) player.vy += GRAVITY;
+  else {
+    player.vy = 0;
+    if (ks.space && !bossSys.isBoss60Context()) { player.vy = JUMP_SPEED; player.isGrounded = false; }
+  }
+
+  if (bossSys.isBoss60Context()) {
+    const boss60Vy = bossSys.getBoss60JumpVy(JUMP_SPEED, state.spaceTriggered, state.sTriggered);
+    if (boss60Vy !== 0) { player.vy = boss60Vy; player.isGrounded = false; }
+  }
+  state.spaceTriggered = false; state.sTriggered = false;
+
+  const nextY = player.y + player.vy;
+  player.isGrounded = false;
+
+  if (scene === "boss_70f") {
+    const [resolvedY, isGrounded] = bossSys.resolveBoss70Vertical(player.x, player.y, nextY, player.vy, P_HALF_W, curPHalfH);
+    player.y = resolvedY;
+    if (isGrounded) { player.isGrounded = true; player.vy = 0; }
+  } else {
+    const lfootX = Math.floor((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+    const rfootX = Math.floor((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+    const headGy = Math.floor((nextY - curPHalfH - GAME_TOP) / GRID_SIZE);
+    const footGy = Math.floor((nextY + curPHalfH - GAME_TOP) / GRID_SIZE);
+    const isUpward = bossSys.isBoss60UpwardActive();
+
+    let landed = false;
+    for (const cx of [lfootX, rfootX]) {
+      if (cx < 0 || cx >= MAP_WIDTH) continue;
+      if (isUpward) {
+        if (player.vy <= 0 && headGy >= 0 && headGy < MAP_HEIGHT && isSolidAll(state, fb, cx, headGy)) {
+          player.y = (headGy + 1) * GRID_SIZE + GAME_TOP + curPHalfH; player.isGrounded = true; player.vy = 0; landed = true; break;
+        }
+        if (player.vy > 0 && footGy >= 0 && footGy < MAP_HEIGHT && isSolidAll(state, fb, cx, footGy)) {
+          player.y = footGy * GRID_SIZE + GAME_TOP - curPHalfH; player.vy = 0; landed = true; break;
+        }
+      } else {
+        if (player.vy >= 0 && footGy >= 0 && footGy < MAP_HEIGHT && isSolidAll(state, fb, cx, footGy)) {
+          player.y = footGy * GRID_SIZE + GAME_TOP - curPHalfH; player.isGrounded = true; landed = true; break;
+        }
+        if (player.vy < 0 && headGy >= 0 && headGy < MAP_HEIGHT && isSolidAll(state, fb, cx, headGy)) {
+          player.y = (headGy + 1) * GRID_SIZE + GAME_TOP + curPHalfH; player.vy = 0; landed = true; break;
+        }
+      }
+    }
+    if (!landed) player.y = nextY;
+    if (player.y > GAME_BOTTOM - curPHalfH) { player.y = GAME_BOTTOM - curPHalfH; player.isGrounded = true; player.vy = 0; }
+    if (player.y < GAME_TOP + curPHalfH) {
+      player.y = GAME_TOP + curPHalfH;
+      if (isUpward) player.isGrounded = true;
+      if (player.vy < 0) player.vy = 0;
+    }
+  }
+
+  // 20F
+  if (scene === "boss_20f" && checkBoss20fGoal(state, player)) {
+    bossSys.isBossActive = false; bossSys.targetReached = true; scene = "game"; player.hp = MAX_HP;
+    teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
+    state.floor = 21; state.floorLines = 0; state.notifiedFloor = 21; flushLineClearQueue(state, false);
+  }
+
+  if (player.invincible > 0) { player.invincible -= 1; player.blinkVisible = (Math.floor(player.invincible / 6) % 2 === 0); }
+  else player.blinkVisible = true;
+}
+
+// ============================================================
+// 描画
+// ============================================================
+function drawNextBlock(ctx, state) {
+  const ndataSrc = (scene === "boss_70f") ? bossSys.boss70.nextBlockData : state.nextBlockData;
+  if (!ndataSrc) return;
+  const mapLeftX = GAME_RIGHT + 80; const mapRightX = SCREEN_WIDTH - 80; const mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
+  const areaTop = GAME_TOP + 20; const areaH = 180;
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("NEXT", mapCenterX, areaTop + 35);
+
+  const ndata = ndataSrc; const cellSize = 32;
+  const minDx = Math.min(...ndata.shape.map(([dx]) => dx)), minDy = Math.min(...ndata.shape.map(([,dy]) => dy));
+  const maxDx = Math.max(...ndata.shape.map(([dx]) => dx)), maxDy = Math.max(...ndata.shape.map(([,dy]) => dy));
+  const blockW = (maxDx - minDx + 1) * cellSize, blockH = (maxDy - minDy + 1) * cellSize;
+  const originX = mapCenterX - blockW / 2 - minDx * cellSize, originY = areaTop + 50 + (areaH - 50 - blockH) / 2 - minDy * cellSize;
+
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+    for (const [dx, dy] of ndata.shape) {
+      ctx.fillStyle = ndata.color; ctx.fillRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
+      ctx.strokeStyle = ndata.outline; ctx.lineWidth = 1; ctx.strokeRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
+    }
+  }
+  ctx.strokeStyle = "#555555"; ctx.lineWidth = 1; ctx.strokeRect(mapLeftX, areaTop, mapRightX - mapLeftX, areaH);
+
+  if (scene.startsWith("boss_")) {
+    const placeholderTop = areaTop + areaH + 40; ctx.fillStyle = "#222233"; ctx.fillRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
+    ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
+    ctx.fillStyle = "white"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+    const bossFileMap = { "boss_10f":"boss10.png", "boss_20f":"boss20.png", "boss_30f":"boss30.png", "boss_40f":"boss40.png", "boss_50f":"boss50.png", "boss_60f":"boss60.png", "boss_70f":"boss70.png" };
+    let bossFile = bossFileMap[scene] || "boss_default.png";
+    ctx.fillText("[ BOSS STANDING IMAGE ]", mapCenterX, placeholderTop + 145); ctx.fillText(`(assets/${bossFile})`, mapCenterX, placeholderTop + 170);
+  }
+}
+
+// 60F: 水中戦・水流ギミック背景演出
+function drawBoss60UnderwaterBg(ctx, state) {
+  if (scene !== "boss_60f") return;
+  const isUp = bossSys.isBoss60Upward();
+  ctx.fillStyle = isUp ? "#003344" : "#001a2a";
+  ctx.fillRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
+
+  ctx.strokeStyle = "#005577"; ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) {
+    const waveY = GAME_TOP + (i + 1) * ((GAME_BOTTOM - GAME_TOP) / 6);
+    const offset = Math.sin(globalFrameCount * 0.05 + i) * 10;
+    ctx.beginPath(); ctx.moveTo(GAME_LEFT, waveY + offset); ctx.lineTo(GAME_RIGHT, waveY - offset); ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#88ccff"; ctx.lineWidth = 1;
+  const numBubbles = isUp ? 14 : 8;
+  for (let i = 0; i < numBubbles; i++) {
+    const speed = isUp ? 4.5 : 0.5;
+    const baseX = GAME_LEFT + 20 + (i * 73) % (GAME_RIGHT - GAME_LEFT - 40);
+    const yOffset = (globalFrameCount * speed + i * 123) % (GAME_BOTTOM - GAME_TOP);
+    const by = GAME_BOTTOM - yOffset;
+    const bx = baseX + Math.sin(globalFrameCount * 0.03 + i) * 15;
+    ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI * 2); ctx.stroke();
+  }
+
+  if (isUp) {
+    const streakColors = ["#aaeeff", "#cff5ff", "#eafcff"];
+    for (let i = 0; i < 10; i++) {
+      const speed = 9.0 + (i % 3) * 1.5;
+      const baseX = GAME_LEFT + 15 + (i * 97) % (GAME_RIGHT - GAME_LEFT - 30);
+      const yOffset = (globalFrameCount * speed + i * 211) % (GAME_BOTTOM - GAME_TOP + 46);
+      const syBottom = GAME_BOTTOM - yOffset;
+      ctx.strokeStyle = streakColors[i % streakColors.length]; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(baseX, syBottom); ctx.lineTo(baseX, syBottom - 46); ctx.stroke();
+    }
+  }
+}
+
+// 70F: シーソーの土台・積みブロック・アクティブブロックを描画
+function drawBoss70Stage(ctx, state) {
+  if (scene !== "boss_70f") return;
+  const targetY = (bossSys.boss70.phase === 1) ? GAME_TOP + 7 * GRID_SIZE : GAME_TOP + 5 * GRID_SIZE;
+  ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(GAME_LEFT, targetY); ctx.lineTo(GAME_RIGHT, targetY); ctx.stroke();
+  ctx.fillStyle = "#ff3333"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "left";
+  ctx.fillText(`TARGET LINE (PHASE ${bossSys.boss70.phase})`, GAME_LEFT + 60, targetY - 15);
+
+  // 支柱
+  ctx.fillStyle = "#222222"; ctx.strokeStyle = "white"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(SEESAW_PIVOT_X, SEESAW_PIVOT_Y);
+  ctx.lineTo(SEESAW_PIVOT_X - 40, GAME_BOTTOM);
+  ctx.lineTo(SEESAW_PIVOT_X + 40, GAME_BOTTOM);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  const cosA = Math.cos(bossSys.boss70.angle), sinA = Math.sin(bossSys.boss70.angle);
+  function localToWorldPoint(lx, ly) { return [SEESAW_PIVOT_X + lx * cosA - ly * sinA, SEESAW_PIVOT_Y + lx * sinA + ly * cosA]; }
+  function drawRotatedRect(lx, ly, hw, hh, fill, outline) {
+    const corners = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([dx,dy]) => localToWorldPoint(lx+dx, ly+dy));
+    ctx.beginPath(); ctx.moveTo(corners[0][0], corners[0][1]);
+    for (let i=1;i<corners.length;i++) ctx.lineTo(corners[i][0], corners[i][1]);
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = outline; ctx.lineWidth = 1.5; ctx.stroke();
+  }
+
+  // デッキ + ガード
+  drawRotatedRect(0, SEESAW_DECK_TOP_LOCAL_Y + SEESAW_THICKNESS / 2, SEESAW_HALF_W, SEESAW_THICKNESS / 2, "#ff66cc", "white");
+  drawRotatedRect(-SEESAW_HALF_W + SEESAW_GUARD_W / 2, -SEESAW_GUARD_H / 2, SEESAW_GUARD_W / 2, SEESAW_GUARD_H / 2, "#ff66cc", "white");
+  drawRotatedRect(SEESAW_HALF_W - SEESAW_GUARD_W / 2, -SEESAW_GUARD_H / 2, SEESAW_GUARD_W / 2, SEESAW_GUARD_H / 2, "#ff66cc", "white");
+
+  // 積みブロックは、セルごとにワールド座標を更新して描くのではなく、
+  // ピース単位のローカル座標系で一度だけシーソーの回転を適用する。
+  // これにより、同じピースのセルが個別に傾いたように見えず、
+  // 生成された塊が一体の剛体として傾く。
+  const groups = new Map();
+  for (const b of bossSys.boss70.placedBlocks) {
+    const key = b.groupId === undefined ? `legacy-${b.localX}-${b.localY}` : b.groupId;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(b);
+  }
+  for (const cells of groups.values()) {
+    ctx.save();
+    ctx.translate(SEESAW_PIVOT_X, SEESAW_PIVOT_Y);
+    ctx.rotate(bossSys.boss70.angle);
+    for (const b of cells) {
+      ctx.fillStyle = b.color; ctx.strokeStyle = b.outline; ctx.lineWidth = 1.5;
+      ctx.fillRect(b.localX - GRID_SIZE / 2 + 1, b.localY - GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+      ctx.strokeRect(b.localX - GRID_SIZE / 2 + 1, b.localY - GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+    }
+    ctx.restore();
+  }
+
+  // シーソーの端から滑り落ちたブロック（画面端でクランプしない）。
+  for (const b of bossSys.boss70.fallingBlocks) {
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.angle || 0);
+    ctx.fillStyle = b.color; ctx.strokeStyle = b.outline; ctx.lineWidth = 1.5;
+    ctx.fillRect(-GRID_SIZE / 2 + 1, -GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+    ctx.strokeRect(-GRID_SIZE / 2 + 1, -GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+    ctx.restore();
+  }
+
+  // アクティブブロック（落下中、自身の角度で回転）
+  const active = bossSys.boss70.activeBlock;
+  if (active && bossSys.boss70.spawnDelayTimer === 0) {
+    const rad = active.angleDeg * Math.PI / 180.0, cA = Math.cos(rad), sA = Math.sin(rad);
+    for (const [lx, ly] of active.getCellLocalCenters()) {
+      const rx = lx * cA - ly * sA + active.x, ry = lx * sA + ly * cA + active.y;
+      const hw = GRID_SIZE / 2.0, hh = GRID_SIZE / 2.0;
+      const corners = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([dx,dy]) => [dx*cA - dy*sA + rx, dx*sA + dy*cA + ry]);
+      ctx.beginPath(); ctx.moveTo(corners[0][0], corners[0][1]);
+      for (let i=1;i<corners.length;i++) ctx.lineTo(corners[i][0], corners[i][1]);
+      ctx.closePath(); ctx.fillStyle = active.color; ctx.fill(); ctx.strokeStyle = active.outline; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
+}
+
+function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceBeamActive = false) {
+  drawBoss60UnderwaterBg(ctx, state);
+  if (state.bgAnim && state.bgAnim.active) {
+    ctx.save(); ctx.beginPath(); ctx.rect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP); ctx.clip();
+    ctx.fillStyle = state.bgAnim.color; ctx.font = "bold 130px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(state.bgAnim.text, (GAME_LEFT + GAME_RIGHT) / 2, state.bgAnim.y); ctx.restore();
+  }
+
+  // グリッド
+  ctx.strokeStyle = "#333333"; ctx.lineWidth = 1; ctx.setLineDash([8, 10]);
+  for (let gx = 0; gx <= MAP_WIDTH; gx++) { ctx.beginPath(); ctx.moveTo(GAME_LEFT + gx * GRID_SIZE, GAME_TOP); ctx.lineTo(GAME_LEFT + gx * GRID_SIZE, GAME_BOTTOM); ctx.stroke(); }
+  for (let gy = 0; gy <= MAP_HEIGHT; gy++) { ctx.beginPath(); ctx.moveTo(GAME_LEFT, GAME_TOP + gy * GRID_SIZE); ctx.lineTo(GAME_RIGHT, GAME_TOP + gy * GRID_SIZE); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  // ビーム
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+    let currentCycle = getBeamCycle(state.floor); if (scene === "boss_10f") currentCycle = 1800;
+    if (forceBeamActive || currentCycle !== Infinity || bossSys.isBossActive) {
+      if (beam.phase === "warning" && beam.blinkOn) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+      if (beam.phase === "firing") {
+        ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE + 4, GAME_TOP, BEAM_WIDTH * GRID_SIZE - 8, GAME_BOTTOM - GAME_TOP);
+      }
+    }
+  }
+
+  // 30F ビーム
+  if (scene === "boss_30f") {
+    if (bossSys.bigBeamPhase === "warning" && Math.floor(bossSys.bigBeamTimer / 4) % 2 === 0) { ctx.fillStyle = "#661111"; ctx.fillRect(GAME_LEFT + GRID_SIZE, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+    if (bossSys.bigBeamPhase === "firing") {
+      ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + GRID_SIZE, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE, GAME_BOTTOM - GAME_TOP);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + GRID_SIZE + 6, GAME_TOP, (MAP_WIDTH - 2) * GRID_SIZE - 12, GAME_BOTTOM - GAME_TOP);
+    }
+  }
+
+  // 40F ビーム
+  if (scene === "boss_40f") {
+    let blink = Math.floor(Date.now() / 130) % 2 === 0;
+    for (let cx of bossSys.boss40ActiveCols) {
+      if (bossSys.boss40LaserPhase === "warning" && blink) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE, GAME_TOP, GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
+      else if (bossSys.boss40LaserPhase === "firing") { ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE, GAME_TOP, GRID_SIZE, GAME_BOTTOM - GAME_TOP); ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + cx * GRID_SIZE + 6, GAME_TOP, GRID_SIZE - 12, GAME_BOTTOM - GAME_TOP); }
+    }
+    for (let cy of bossSys.boss40ActiveRows) {
+      if (bossSys.boss40LaserPhase === "warning" && blink) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT, GAME_TOP + cy * GRID_SIZE, GAME_RIGHT - GAME_LEFT, GRID_SIZE); }
+      else if (bossSys.boss40LaserPhase === "firing") { ctx.fillStyle = "#ff2200"; ctx.fillRect(GAME_LEFT, GAME_TOP + cy * GRID_SIZE, GAME_RIGHT - GAME_LEFT, GRID_SIZE); ctx.fillStyle = "#ffffff"; ctx.fillRect(GAME_LEFT + 6, GAME_TOP + cy * GRID_SIZE + 6, GAME_RIGHT - GAME_LEFT - 12, GRID_SIZE - 12); }
+    }
+  }
+
+  // 盤面ブロック
+  let goalFlash = Math.floor(Date.now() / 250) % 2 === 0;
+  for (let y = 0; y < MAP_HEIGHT; y++) {
+    for (let x = 0; x < MAP_WIDTH; x++) {
+      let val = state.blockMap[y][x];
+      if (val === 9999) {
+        ctx.fillStyle = goalFlash ? "#ffff33" : "#cccc00"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = "#ffffbb"; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      } else if (val >= 1) {
+        let shapeId = Math.floor(val / 1000);
+        let col = is_fixed_terrain(val) ? { fill:"gray", outline:"#444444" } : (BLOCK_COLOR_MAP[shapeId] || { fill:"#888888", outline:"#444444" });
+        ctx.fillStyle = col.fill; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = col.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+        
+        // 【50Fボス専用追加分】固定盤面の反転ブロックに対しても渦巻き模様を描写[cite: 4]
+        if (!is_fixed_terrain(val) && (shapeId === 19 || shapeId === 20 || shapeId === 21)) {
+          let cellCx = GAME_LEFT + x * GRID_SIZE + GRID_SIZE / 2;
+          let cellCy = GAME_TOP + y * GRID_SIZE + GRID_SIZE / 2;
+          drawSwirlCell(ctx, cellCx, cellCy, shapeId, globalFrameCount);
+        }
+      }
+    }
+  }
+
+  // 30F パズルお題オーバーレイ
+  if (scene === "boss_30f" && bossSys.puzzleMap) {
+    let blink = Math.floor(Date.now() / 100) % 2 === 0;
+    for (let y = 0; y < MAP_HEIGHT; y++) {
+      for (let x = 0; x < MAP_WIDTH; x++) {
+        let pval = bossSys.puzzleMap[y][x]; if (pval === 0 || state.blockMap[y][x] >= 1) continue;
+        ctx.save(); ctx.globalAlpha = 0.5;
+        if (pval === PUZZLE_BLUE_ID) { ctx.fillStyle = "#2255ff"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); ctx.strokeStyle = "#77aaff"; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); }
+        else if (pval === PUZZLE_RED_ID) { if (!bossSys.trapActive || blink) { ctx.fillStyle = !bossSys.trapActive ? "#ff2222" : "#ffffff"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); ctx.strokeStyle = "#ff8888"; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE + 2, GAME_TOP + y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4); } }
+        ctx.restore();
+      }
+    }
+  }
+
+  drawBoss70Stage(ctx, state);
+
+  // 落下ブロック
+  if (!hideFallingBlock && scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+    let gc = fb.getGhostCells(state);
+    if (gc.length > 0) {
+      let gf = darkenColor(fb.color, 0.28), go = darkenColor(fb.outline || fb.color, 0.45), fbc = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+      for (const [gx,gy] of gc) {
+        if (fbc.has(`${gx},${gy}`)) continue; ctx.fillStyle = gf; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+        ctx.strokeStyle = go; ctx.lineWidth = 2; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE + 2, GAME_TOP + gy * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+      }
+    }
+    for (const [gx,gy] of fb.getCells()) { 
+      ctx.fillStyle = fb.color; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); ctx.strokeStyle = fb.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); 
+      
+      // 【50Fボス専用追加分】落下中の反転ブロック(19〜21)への渦巻き描画[cite: 4]
+      if (fb.shapeId === 19 || fb.shapeId === 20 || fb.shapeId === 21) {
+        let cellCx = GAME_LEFT + gx * GRID_SIZE + GRID_SIZE / 2;
+        let cellCy = GAME_TOP + gy * GRID_SIZE + GRID_SIZE / 2;
+        drawSwirlCell(ctx, cellCx, cellCy, fb.shapeId, globalFrameCount);
+      }
+    }
+  }
+
+  // プレイヤー
+  if (player.blinkVisible) {
+    const drawHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+    ctx.fillStyle = player.invincible > 0 ? "#ffaaaa" : "lightgreen"; ctx.fillRect(player.x - P_HALF_W, player.y - drawHalfH, P_HALF_W * 2, drawHalfH * 2);
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(player.x - P_HALF_W, player.y - drawHalfH, P_HALF_W * 2, drawHalfH * 2);
+  }
+
+  // 警告
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && beam.phase === "warning") {
+    ctx.fillStyle = "#111111"; ctx.fillRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 2; ctx.strokeRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
+    ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(scene === "boss_10f" ? "⚠ BOSS BEAM INBOUND ⚠" : "⚠ WARNING: BEAM INBOUND ⚠", (GAME_LEFT + GAME_RIGHT) / 2, GAME_TOP + 72);
+  }
+
+  // HUD 左側
+  const canvasX = Math.floor((40 + GAME_LEFT - 40) / 2); ctx.fillStyle = "white"; ctx.font = "bold 28px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("SCORE", canvasX, GAME_TOP + 80); ctx.fillText(state.score, canvasX, GAME_TOP + 120);
+
+  if (scene === "boss_10f") {
+    ctx.fillStyle = "red"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("BOSS HEALTH", canvasX, GAME_TOP + 240);
+    ctx.fillStyle = "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`${bossSys.bossHp} / 8 LINES`, canvasX, GAME_TOP + 290);
+  } else if (scene === "boss_20f") {
+    ctx.fillStyle = "yellow"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText("LIMIT TIME", canvasX, GAME_TOP + 240);
+    ctx.fillStyle = (bossSys.bossTimer < 300) ? "red" : "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`REMAIN: ${(bossSys.bossTimer / 60).toFixed(2)}s`, canvasX, GAME_TOP + 290);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("右上の黄色いゴールへ到達せよ！", canvasX, GAME_TOP + 400); ctx.fillText("【クリア特典】 HP全回復", canvasX, GAME_TOP + 430);
+  } else if (scene === "boss_30f") {
+    ctx.fillStyle = "red"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("BOSS HEALTH", canvasX, GAME_TOP + 210);
+    ctx.fillStyle = "white"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`${bossSys.bossHp} / 3 SECTIONS`, canvasX, GAME_TOP + 250);
+    ctx.fillStyle = "yellow"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("LIMIT TIME", canvasX, GAME_TOP + 300);
+    ctx.fillStyle = "white"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`REMAIN: ${(bossSys.boss30Timer / 60).toFixed(2)}s`, canvasX, GAME_TOP + 340);
+    if (bossSys.trapActive) { ctx.fillStyle = "#ff3333"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("⚠ TRAP ARMED ⚠", canvasX, GAME_TOP + 400); ctx.fillText(`${(bossSys.trapTimer / 60).toFixed(2)}s`, canvasX, GAME_TOP + 440); }
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.fillText("青マスをお題通りに埋めろ！", canvasX, GAME_TOP + 540); ctx.fillText("赤マスを埋めると罠ビーム発動", canvasX, GAME_TOP + 570); ctx.fillText("安全地帯は左右両端のみ", canvasX, GAME_TOP + 600);
+  } else if (scene === "boss_40f") {
+    ctx.fillStyle = "yellow"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText("SURVIVAL TIME", canvasX, GAME_TOP + 240);
+    ctx.fillStyle = "white"; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(`SURVIVE: ${(bossSys.bossTimer / 60).toFixed(2)}s`, canvasX, GAME_TOP + 290);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("複合レーザーの猛攻を耐え抜け！", canvasX, GAME_TOP + 400); ctx.fillText("60秒間生存でクリア", canvasX, GAME_TOP + 430);
+  } else if (scene === "boss_50f") {
+    // 【50Fボス専用追加分】左パネル専用UI表示構成[cite: 4]
+    let effects = bossSys.getPlayerStatusEffects(state);
+    let phaseNames = {1: "BLUE (R-Invert)", 2: "RED (B-Invert)", 3: "PURPLE (P-Invert)"};
+    ctx.fillStyle = "#ff00ff"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("50F BOSS TASK", canvasX, GAME_TOP + 200);
+    ctx.fillStyle = "white"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`PHASE ${bossSys.boss50Phase} / 3\n[${phaseNames[bossSys.boss50Phase] || "END"}]`, canvasX, GAME_TOP + 240);
+    
+    if (!bossSys.boss50PhaseBlockLocked) {
+      ctx.fillStyle = "yellow"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("TARGET INBOUND...", canvasX, GAME_TOP + 310);
+    } else {
+      ctx.fillStyle = "#00eeff"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText(`TARGET CELLS\nREMAIN: ${bossSys.boss50TargetRemaining} px`, canvasX, GAME_TOP + 310);
+    }
+
+    // デバフ警告点滅インジケータ[cite: 4]
+    if (Math.floor(Date.now() / 250) % 2 === 0) {
+      ctx.fillStyle = "red"; ctx.font = "bold 16px 'DotGothic16', sans-serif";
+      if (effects.blockReversed && effects.playerReversed) ctx.fillText("⚠ ALL CONTROLS REVERSED ⚠", canvasX, GAME_TOP + 390);
+      else if (effects.blockReversed) { ctx.fillStyle = "#0055ff"; ctx.fillText("⚠ BLOCK MOVE REVERSED ⚠", canvasX, GAME_TOP + 390); }
+      else if (effects.playerReversed) ctx.fillText("⚠ PLAYER MOVE REVERSED ⚠", canvasX, GAME_TOP + 390);
+    }
+
+    ctx.fillStyle = "#aaaacc"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
+    let binst = ["50F BOSS MISSION", "", "各フェーズの特殊形状", "アルファベットブロックを", "ライン消去等で全破壊せよ！", "", "盤面にブロックがある間は", "対応した操作軸が反転デバフ！", "※反転ブロックは回転不可"];
+    binst.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 450 + i * 22));
+
+    // 【50Fボス専用】このボス戦中に新たに獲得したコンボブロックのみ使用可能[cite: 4]
+    let comboY = GAME_TOP + 450 + binst.length * 22 + 20;
+    if (state.boss50ComboEverActivated) {
+      if (state.boss50ComboCount >= 1) { ctx.fillStyle = "#ff4400"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`${state.boss50ComboCount} COMBO!!`, canvasX, comboY); }
+      ctx.fillStyle = "#ffcc00"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.fillText("COMBO BLOCKS (BOSS)", canvasX, comboY + 32);
+      ctx.fillStyle = "#ffffff"; ctx.font = "bold 32px 'DotGothic16', sans-serif"; ctx.fillText(`${state.boss50ComboBlocks}`, canvasX, comboY + 68);
+      ctx.fillStyle = "#00eeff"; ctx.font = "bold 13px 'DotGothic16', sans-serif"; ctx.fillText("[W] コンボブロック使用", canvasX, comboY + 92);
+    }
+  } else if (scene === "boss_60f") {
+    ctx.fillStyle = "#00aaff"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("60F BOSS TASK", canvasX, GAME_TOP + 220);
+    let flowColor = bossSys.boss60Flow === "down" ? "#00eeff" : "#ff8800";
+    ctx.fillStyle = flowColor; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`FLOW: ${bossSys.getBoss60FlowDisplay()}`, canvasX, GAME_TOP + 260);
+    ctx.fillStyle = "white"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`PHASE ${bossSys.getBoss60PhaseDisplay()}`, canvasX, GAME_TOP + 300);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`LINES ${bossSys.getBoss60LinesDisplay()}`, canvasX, GAME_TOP + 340);
+    if (bossSys.isBoss60Transition()) { ctx.fillStyle = "#ff3333"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("⚠ CURRENT SHIFTING! ⚠", canvasX, GAME_TOP + 400); }
+    ctx.fillStyle = "#aaaacc"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
+    let b60 = ["60F BOSS MISSION", "", "水中ステージを攻略せよ！", "", "【下向き水流】", "ブロックは上から落下", "Spaceでジャンプ", "", "【上向き水流】", "ブロックは下から浮上", "Sキーで潜り（下方向ジャンプ）", "↑で速度上昇、↓でハードドロップ", "", "【クリア条件】", "4列消去×4回（計16列）"];
+    b60.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 460 + i * 20));
+  } else if (scene === "boss_70f") {
+    ctx.fillStyle = "#ffcc00"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("70F SEESAW TASK", canvasX, GAME_TOP + 220);
+    let tiltDeg = bossSys.boss70.angle * 180 / Math.PI;
+    let tiltCol = Math.abs(tiltDeg) < 20.0 ? "lightgreen" : "#ff3333";
+    ctx.fillStyle = tiltCol; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText(`ANGLE: ${tiltDeg >= 0 ? "+" : ""}${tiltDeg.toFixed(1)}°`, canvasX, GAME_TOP + 260);
+    ctx.fillStyle = "white"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`PHASE: ${bossSys.boss70.phase} / 2`, canvasX, GAME_TOP + 300);
+    let holdSec = Math.max(0, bossSys.boss70.winTimer / 60.0);
+    let timerCol = bossSys.boss70.winTimer < 180 ? "#00eeff" : "white";
+    ctx.fillStyle = timerCol; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`CLEAR HOLD: ${holdSec.toFixed(2)}s`, canvasX, GAME_TOP + 340);
+    ctx.fillStyle = "#aaaacc"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
+    let b70 = ["70F BOSS MISSION", "", "シーソーの均衡を保ちつつ", "積んだブロックを登れ！", "", "【フェーズ1】", "上空5マスの赤ラインに", "3秒間到達で進展！", "", "【フェーズ2】", "上空3マスの赤ラインに", "3秒間到達で撃破！", "", "※新しいブロックの出現・", "着地に巻き込まれるとダメージ！"];
+    b70.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 460 + i * 20));
+  }
+
+  if (!scene.startsWith("boss_") && state.comboEverActivated) {
+    if (state.comboCount >= 1) { ctx.fillStyle = "#ff4400"; ctx.font = "bold 40px 'DotGothic16', sans-serif"; ctx.fillText(`${state.comboCount} COMBO!!`, canvasX, GAME_TOP + 260); }
+    ctx.fillStyle = "#ffcc00"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("COMBO BLOCKS", canvasX, GAME_TOP + 340);
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 64px 'DotGothic16', sans-serif"; ctx.fillText(`${state.comboBlocks}`, canvasX, GAME_TOP + 410);
+    ctx.fillStyle = "#00eeff"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText("[W] コンボブロック使用", canvasX, GAME_TOP + 570);
+  } else if (!scene.startsWith("boss_")) {
+    ctx.fillStyle = "#aaaaaa"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
+    let ct = ["CONTROLS","", "[A]/[D]: プレイヤー移動", "[Space]: ジャンプ", "[S]: しゃがみ", "[↓]: ブロック加速", "[↑]: ハードドロップ", "[←]/[→]: ブロック移動", "[Q]/[E]: ブロック回転", "[W]: コンボブロック使用", "[Esc]: ポーズ"];
+    ct.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 240 + i * 22));
+  }
+
+  const hpY = GAME_BOTTOM - 120; ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", canvasX, hpY - 40);
+  for (let i = 0; i < MAX_HP; i++) { let sx = canvasX - (MAX_HP - 1) * 25; ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+
+  // HUD 右側 (階層マップ)
+  const mapLeftX = GAME_RIGHT + 80, mapRightX = SCREEN_WIDTH - 80, mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);
+  const baseY = 960, floorGap = 140, startF = Math.max(1, state.floor - 1), endF = startF + 5;
+  for (let f = startF; f <= endF; f++) {
+    const fy = baseY - (f - startF) * floorGap; if (fy < GAME_TOP + 230) continue;
+    let lineCol = f === state.floor ? "yellow" : "#444444", textCol = f === state.floor ? "yellow" : "gray";
+    ctx.strokeStyle = lineCol; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(mapLeftX + 80, fy); ctx.lineTo(mapRightX - 100, fy); ctx.stroke();
+    ctx.fillStyle = textCol; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.textAlign = "left";
+    let fText = f === 10 ? "10F(BOSS)" : f === 20 ? "20F(BOSS)" : f === 30 ? "30F(BOSS)" : f === 40 ? "40F(BOSS)" : f === 50 ? "50F(BOSS)" : `${f} F`; // 【50F追加】[cite: 4]
+    ctx.fillText(fText, mapLeftX + 30, fy + 8);
+    if (f === state.floor) {
+      ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.textAlign = "right"; ctx.fillText("◆ NOW", mapRightX - 40, fy + 5);
+    }
+  }
+
+  drawNextBlock(ctx, state);
+  ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "cyan"; ctx.lineWidth = 1; ctx.strokeRect(40, GAME_TOP, GAME_LEFT - 80, GAME_BOTTOM - GAME_TOP);
+  ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.strokeRect(GAME_RIGHT + 40, GAME_TOP, SCREEN_WIDTH - GAME_RIGHT - 80, GAME_BOTTOM - GAME_TOP);
+}
+
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const paragraphs = text.split("\n"); const totalLines = paragraphs.length; const startY = y - ((totalLines - 1) * lineHeight) / 2;
+  paragraphs.forEach((line, i) => ctx.fillText(line, x, startY + i * lineHeight));
+}
+
+function tutDrawOverlay(ctx, tutState, width, height, gameLeft, gameTop, gameRight, gameBottom) {
+  const sd = tutState.currentStepData(); if (!sd) return; const cx = width / 2;
+  if (sd.highlight === "ui" && Math.floor(tutState.stepTimer / 20) % 2 === 0) {
+    ctx.strokeStyle = "yellow"; ctx.lineWidth = 6; ctx.strokeRect(40, gameTop, gameLeft - 80, gameBottom - gameTop); ctx.strokeRect(gameRight + 40, gameTop, width - gameRight - 80, gameBottom - gameTop);
+  } else if (sd.highlight === "warning") { ctx.strokeStyle = "yellow"; ctx.lineWidth = 4; ctx.setLineDash([10, 10]); ctx.strokeRect(cx - 300, gameTop + 20, 600, 90); ctx.setLineDash([]); }
+  else if (sd.highlight === "player") { ctx.strokeStyle = "#00ff88"; ctx.lineWidth = 4; ctx.setLineDash([12, 8]); ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, gameBottom - gameTop); ctx.setLineDash([]); }
+  else if (sd.highlight === "block") { ctx.strokeStyle = "#ffaa00"; ctx.lineWidth = 4; ctx.setLineDash([12, 8]); ctx.strokeRect(gameLeft, gameTop, gameRight - gameLeft, 200); ctx.setLineDash([]); }
+
+  const panelW = 820, panelH = 170, panelX0 = cx - panelW / 2, panelY0 = gameTop + 130, panelY1 = panelY0 + panelH;
+  ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(panelX0, panelY0, panelW, panelH);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 2; ctx.strokeRect(panelX0, panelY0, panelW, panelH);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "left"; ctx.fillText(`STEP ${sd.step} / ${TUTORIAL_STEPS.length}`, panelX0 + 16, panelY0 + 24);
+
+  let showPrompt = !tutState.started || tutState.isCleared;
+  let promptText = !tutState.started ? "▶ FキーでOK" : sd.condition_type === "wait_input" ? "▶ Fキーで次へ" : "▶ 達成！ Fキーで次へ";
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  wrapText(ctx, sd.text, cx, panelY0 + panelH / 2 - (showPrompt ? 18 : 0), panelW - 40, 24);
+  if (showPrompt) { ctx.fillStyle = "#ffff00"; ctx.font = "bold 15px 'DotGothic16', sans-serif"; ctx.fillText(promptText, cx, panelY1 - 18); }
+}
+
+function drawTitle(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#334455"; ctx.lineWidth = 2; ctx.strokeRect(cx - 480, 60, 960, H - 120);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 72px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GRID TOWER", cx, 230);
+  ctx.fillStyle = "#aaaacc"; ctx.font = "24px 'DotGothic16', sans-serif"; ctx.fillText("～目指せ100F～", cx, 300);
+  const btnW = 400, btnH = 70, gap = 30, startY = (H - (4 * btnH + 3 * gap)) / 2 + 80;
+  const buttons = [["PLAY", "#22aa55", "#ffffff", "btn_play"],["HARD MODE (未実装)", "#444444", "#aaaaaa", "btn_hard"],["TUTORIAL", "#225588", "#ffffff", "btn_tutorial"],["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+  const tutRect = _btnRects["btn_tutorial"];
+  if (tutRect) {
+    const labelX = tutRect.x + tutRect.w + 220; // 画面右側の余白部分
+    const labelY = tutRect.y + tutRect.h / 2;
+    const arrowStartX = labelX - 20;
+    const arrowEndX = tutRect.x + tutRect.w + 20; // ボタン右端の少し外側
+    const blink = Math.floor(performance.now() / 500) % 2 === 0;
+
+    if (blink) {
+      // テキスト「まずはチュートリアル」
+      ctx.fillStyle = "#ffee00";
+      ctx.font = "bold 26px 'DotGothic16', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("まずはチュートリアル", labelX, labelY - 30);
+
+      // 矢印（テキストからボタンへ向かって左向き）
+      ctx.strokeStyle = "#ffee00";
+      ctx.fillStyle = "#ffee00";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(arrowStartX, labelY);
+      ctx.lineTo(arrowEndX, labelY);
+      ctx.stroke();
+      // 矢印の先端（三角形）
+      ctx.beginPath();
+      ctx.moveTo(arrowEndX, labelY);
+      ctx.lineTo(arrowEndX + 18, labelY - 10);
+      ctx.lineTo(arrowEndX + 18, labelY + 10);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // アンケートに回答ボタン（パネル左側の余白）
+  const surveyBtnW = 300, surveyBtnH = 60;
+  const surveyBtnX = (cx - 480 - surveyBtnW) / 2;
+  const surveyBtnY = startY + (4 * btnH + 3 * gap) / 2 - surveyBtnH / 2;
+  ctx.fillStyle = "#aa3377";
+  ctx.fillRect(surveyBtnX, surveyBtnY, surveyBtnW, surveyBtnH);
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1;
+  ctx.strokeRect(surveyBtnX, surveyBtnY, surveyBtnW, surveyBtnH);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("アンケートに回答", surveyBtnX + surveyBtnW / 2, surveyBtnY + surveyBtnH / 2 + 7);
+  _btnRects["btn_survey_title"] = { x: surveyBtnX, y: surveyBtnY, w: surveyBtnW, h: surveyBtnH };
+}
+
+function drawPause(ctx) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, W, H);
+  const pw = 500, ph = 520, px0 = cx - pw / 2, py0 = H / 2 - ph / 2; ctx.fillStyle = "#1a1a2e"; ctx.fillRect(px0, py0, pw, ph);
+  ctx.strokeStyle = "#00eeff"; ctx.lineWidth = 3; ctx.strokeRect(px0, py0, pw, ph);
+  ctx.fillStyle = "#00eeff"; ctx.font = "bold 48px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("PAUSE", cx, py0 + 90);
+  const btnW = 360, btnH = 65, gap = 20, startY = py0 + 160;
+  const buttons = [["RESUME", "#22aa55", "#ffffff", "btn_resume"],["RETRY", "#cc8800", "#ffffff", "btn_retry_pause"],["HOME", "#225588", "#ffffff", "btn_home_pause"],["QUIT GAME", "#553333", "#ffaaaa", "btn_quit_pause"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 24px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 9);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+}
+
+function drawGameover(ctx, score, floorReached) {
+  const W = SCREEN_WIDTH, H = SCREEN_HEIGHT, cx = W / 2; ctx.fillStyle = "#0d0000"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#ff2200"; ctx.font = "bold 80px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GAME OVER", cx, H / 2 - 230);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 36px 'DotGothic16', sans-serif"; ctx.fillText(`SCORE  :  ${score}`, cx, H / 2 - 110);
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "28px 'DotGothic16', sans-serif"; ctx.fillText(`FLOOR REACHED  :  ${floorReached} F`, cx, H / 2 - 50);
+  const btnW = 400, btnH = 70, gap = 24, startY = H / 2 + 50;
+  const buttons = [["RETRY", "#cc4400", "#ffffff", "btn_retry_go"],["HOME", "#225588", "#ffffff", "btn_home_go"],["QUIT GAME", "#333333", "#aaaaaa", "btn_quit_go"]];
+  _btnRects = {};
+  buttons.forEach(([label, bg, fg, tag], i) => {
+    const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(cx - btnW / 2, y0, btnW, btnH);
+    ctx.fillStyle = fg; ctx.font = "bold 28px 'DotGothic16', sans-serif"; ctx.fillText(label, cx, y0 + btnH / 2 + 10);
+    _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
+  });
+
+  // アンケートに回答ボタン（ボタン列の下に追加）
+  const surveyBtnW = 400, surveyBtnH = 60, surveyBtnY = startY + buttons.length * (btnH + gap) + 10;
+  ctx.fillStyle = "#aa3377";
+  ctx.fillRect(cx - surveyBtnW / 2, surveyBtnY, surveyBtnW, surveyBtnH);
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1;
+  ctx.strokeRect(cx - surveyBtnW / 2, surveyBtnY, surveyBtnW, surveyBtnH);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("アンケートに回答", cx, surveyBtnY + surveyBtnH / 2 + 8);
+  _btnRects["btn_survey_go"] = { x: cx - surveyBtnW / 2, y: surveyBtnY, w: surveyBtnW, h: surveyBtnH };
+}
+
+function hitBtn(tag, cx, cy) { if (!_btnRects[tag]) return false; let r = _btnRects[tag]; return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h; }
+
+function quitGame() {
+  scene = "quit";
+  try { window.close(); } catch (e) { }
+}
+
+function drawQuit(ctx) {
+  ctx.fillStyle = "#000000"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 40px 'DotGothic16', sans-serif";
+  ctx.fillText("プレイありがとうございました", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 20);
+  ctx.fillStyle = "#aaaaaa"; ctx.font = "22px 'DotGothic16', sans-serif";
+  ctx.fillText("このタブを閉じてゲームを終了してください", SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 30);
+}
+
+// ============================================================
+// メインループ ＆ イベント
+// ============================================================
+let state, tutState, fb, player, beam, bms;
+function resetGame() {
+  state = new GameState(); tutState = new TutorialState(); fb = new FallingBlock(state); player = new Player(); beam = new BeamState(); bms = new BlockMoveState(); bossSys.reset_all();
+}
+resetGame();
+
+const canvas = document.getElementById("gameCanvas"); const ctx = canvas.getContext("2d");
+let _lastTime = null, _accumulator = 0;
+
+function mainProc(timestamp) {
+  requestAnimationFrame(mainProc); if (_lastTime === null) _lastTime = timestamp;
+  _accumulator += timestamp - _lastTime; _lastTime = timestamp;
+  if (_accumulator < 16.66) return; _accumulator = 0;
+
+  globalFrameCount++; // 【50F追加】渦巻きの回転用インクリメントカウンタ[cite: 4]
+  ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+
+  if (scene === "title") drawTitle(ctx);
+  else if (scene === "quit") drawQuit(ctx);
+  else if (sceneover(scene)) drawGameover(ctx, state.score, state.floor);
+  else if (scene === "pause") { drawGame(ctx, state, fb, player, beam); drawPause(ctx); }
+  else {
+    const isTut = (scene === "tutorial"); let tutorialPaused = false, blockFrozen = false, isBeamStep = false;
+    if (isTut) {
+      if (tutState._needsSetup) tutSetupStep(tutState, state, player, fb, beam);
+      let sd = tutState.currentStepData();
+      if (sd) { if (sd.condition_type !== "beam_evade") beam.timer = 0; else { isBeamStep = true; if (beam.phase === "firing" && beam.showTimer === 1) tutState.flags.beam_fired = true; } }
+      tutorialPaused = tutState.isWaitingForAck(); blockFrozen = tutState.isBlockFrozen();
+    }
+
+    if (!tutorialPaused) {
+      if (state.comboTimer > 0 && --state.comboTimer <= 0) { if (state.pendingComboBlocks > 0) { state.comboBlocks += state.pendingComboBlocks; state.pendingComboBlocks = 0; } state.comboTimer = 0; state.comboCount = 0; }
+      // 【50Fボス専用】50Fボス戦専用コンボプールのタイマー減衰[cite: 4]
+      if (state.boss50ComboTimer > 0 && --state.boss50ComboTimer <= 0) { if (state.boss50PendingComboBlocks > 0) { state.boss50ComboBlocks += state.boss50PendingComboBlocks; state.boss50PendingComboBlocks = 0; } state.boss50ComboTimer = 0; state.boss50ComboCount = 0; }
+      
+      // ボス空間移行判定 (10F / 20F / 30F / 40F / 50F)
+      // 【修正箇所】「and」によるSyntaxErrorを回避し、「&&」に完全置換[cite: 4]
+      if (state.floor === 10 && !bossSys.isBossActive && scene === "game" && !bossSys.cursedBeamActive) { flushLineClearQueue(state); bossSys.generateBossStage(state, 10); scene = "boss_10f"; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0; }
+      else if (state.floor === 20 && !bossSys.isBossActive && scene === "game" && !bossSys.targetReached) { flushLineClearQueue(state); bossSys.generateBossStage(state, 20); scene = "boss_20f"; teleportPlayerBoss20(player); player.invincible = INVINCIBLE_FRAMES; }
+      else if (state.floor === 30 && !bossSys.isBossActive && scene === "game" && !bossSys.boss30Cleared) { flushLineClearQueue(state); bossSys.generateBossStage(state, 30); scene = "boss_30f"; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; }
+      else if (state.floor === 40 && !bossSys.isBossActive && scene === "game" && !bossSys.boss40Cleared) { flushLineClearQueue(state); bossSys.generateBossStage(state, 40); scene = "boss_40f"; teleportPlayerBoss20(player); player.invincible = INVINCIBLE_FRAMES; }
+      else if (state.floor === 50 && !bossSys.isBossActive && scene === "game" && !bossSys.boss50Cleared) {
+        // 【50Fボス専用追加分】50Fボスシーンへの遷移処理割り込み[cite: 4]
+        flushLineClearQueue(state);
+        bossSys.generateBossStage(state, 50);
+        scene = "boss_50f";
+        let fid = bossSys.getForcedSpawnShapeId();
+        if (fid) fb.spawnBlockForced(fid);
+        teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      }
+      else if (state.floor === 60 && !bossSys.isBossActive && scene === "game" && !bossSys.boss60Cleared) {
+        flushLineClearQueue(state);
+        bossSys.generateBossStage(state, 60);
+        scene = "boss_60f";
+        teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      }
+      else if (state.floor === 70 && !bossSys.isBossActive && scene === "game" && !bossSys.boss70.cleared) {
+        flushLineClearQueue(state);
+        bossSys.generateBossStage(state, 70);
+        scene = "boss_70f";
+        teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      }
+
+      // ボス固有更新処理
+      if (scene === "boss_20f") { bossSys.bossTimer--; if (bossSys.bossTimer <= 0) scene = "gameover"; }
+      else if (scene === "boss_30f") {
+        let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
+        let res = bossSys.update_boss30_logic(state, pGx, player.invincible);
+        if (res === "damage") { applyPlayerDamage(player); flushLineClearQueue(state, false); }
+        else if (res === "beam_clear") { flushLineClearQueue(state, false); }
+        else if (res === "victory") { bossSys.isBossActive = false; bossSys.boss30Cleared = true; scene = "game"; player.hp = MAX_HP; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state); state.floor = 31; state.notifiedFloor = 31; flushLineClearQueue(state, false); }
+        else if (res === "advance") flushLineClearQueue(state, false);
+      } else if (scene === "boss_40f") {
+        let res = bossSys.update_boss40_logic(player);
+        if (res === "clear") { bossSys.isBossActive = false; bossSys.boss40Cleared = true; scene = "game"; player.hp = MAX_HP; teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state); state.floor = 41; state.floorLines = 0; state.notifiedFloor = 41; flushLineClearQueue(state, false); }
+        if (bossSys.boss40LaserPhase === "firing" && player.invincible === 0) {
+          let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE), pGy = Math.floor((player.y - GAME_TOP) / GRID_SIZE);
+          if (bossSys.boss40ActiveCols.includes(pGx) || bossSys.boss40ActiveRows.includes(pGy)) applyPlayerDamage(player);
+        }
+      } else if (scene === "boss_50f") {
+        // 【50Fボス専用追加分】毎フレームのターゲット全消去走査・破砕チェック[cite: 4]
+        let res = bossSys.update_boss50_logic(state);
+        if (res === "phase_advance") {
+          let fid = bossSys.getForcedSpawnShapeId();
+          if (fid) fb.spawnBlockForced(fid);
+          flushLineClearQueue(state, false);
+        } else if (res === "victory") {
+          bossSys.isBossActive = false; bossSys.boss50Cleared = true; scene = "game"; player.hp = MAX_HP;
+          teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
+          state.floor = 51; state.floorLines = 0; state.notifiedFloor = 51; flushLineClearQueue(state, false);
+          // 【50Fボス専用】クリア時、50F専用コンボプールを破棄し通常フロアのコンボブロック状態に戻す[cite: 4]
+          state.boss50ComboCount = 0; state.boss50ComboBlocks = 0; state.boss50PendingComboBlocks = 0; state.boss50ComboTimer = 0; state.boss50ComboEverActivated = false;
+        }
+      } else if (scene === "boss_60f") {
+        let res = bossSys.updateBoss60Frame(state, player, fb, beam);
+        if (res === "victory") {
+          bossSys.isBossActive = false; bossSys.boss60Cleared = true; scene = "game"; player.hp = MAX_HP;
+          teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+          bossSys.restorePreviousMap(state); state.floor = 61; state.floorLines = 0; state.notifiedFloor = 61;
+          flushLineClearQueue(state, false);
+        } else if (res === "update_beam") {
+          updateBeam(beam, player, 360);
+        }
+      } else if (scene === "boss_70f") {
+        let res = bossSys.updateBoss70Logic(state, player);
+        if (res === "damage") { applyPlayerDamage(player); flushLineClearQueue(state, false); }
+        else if (res === "victory") {
+          bossSys.isBossActive = false; bossSys.boss70.cleared = true; scene = "game"; player.hp = MAX_HP;
+          teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+          bossSys.restorePreviousMap(state); state.floor = 71; state.floorLines = 0; state.notifiedFloor = 71;
+          flushLineClearQueue(state, false);
+        } else if (res === "phase_advance") { flushLineClearQueue(state, false); }
+      }
+
+      // 階層背景演出
+      if (state.floor > state.notifiedFloor && state.comboTimer <= 0 && state.lineClearQueue.length === 0 && !scene.startsWith("boss_")) {
+        state.notifiedFloor = state.floor; let colors = ["hsla(0,40%,25%,0.4)","hsla(120,40%,25%,0.4)","hsla(210,40%,25%,0.4)"];
+        state.bgAnim = { active: true, y: GAME_TOP - 150, text: `${state.floor}${getOrdinal(state.floor)} FLOOR`, color: colors[Math.floor(Math.random()*colors.length)] };
+      }
+      if (state.bgAnim && state.bgAnim.active) { state.bgAnim.y += 4; if (state.bgAnim.y > GAME_BOTTOM + 200) state.bgAnim.active = false; }
+
+      processLineClearQueue(state); updateBlockMove(state, fb, bms);
+      if (!blockFrozen && !(scene === "boss_60f" && bossSys.isBoss60Transition())) updateFallingBlock(state, fb, isTut, isTut ? tutState : null);
+      updatePlayer(state, fb, player); applyGravityPushOnly(state, fb); applyGravityToBlocks(state); checkCrush(state, fb, player);
+      updateBeam(beam, player, isBeamStep ? 1800 : null);
+    }
+    if (isTut) tutCheckStepCondition(tutState, state, player, fb, beam);
+    drawGame(ctx, state, fb, player, beam, blockFrozen || (scene === "boss_60f" && bossSys.isBoss60Transition()), isBeamStep);
+    if (isTut) tutDrawOverlay(ctx, tutState, SCREEN_WIDTH, SCREEN_HEIGHT, GAME_LEFT, GAME_TOP, GAME_RIGHT, GAME_BOTTOM);
+  }
+}
+
+function sceneover(s) { return s === "gameover"; }
+
+function getKey(code) {
+  const map = { "KeyW":"w","KeyA":"a","KeyS":"s","KeyD":"d","KeyE":"e","ArrowLeft":"left","ArrowRight":"right","ArrowDown":"down","ArrowUp":"up","Space":"space","Escape":"escape","KeyF":"f" };
+  return map[code] || code.toLowerCase().replace("key","");
+}
+
+document.addEventListener("keydown", e => {
+  const sym = getKey(e.code); if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
+  if (scene === "title" || scene === "gameover" || scene === "quit") return;
+  if (scene === "pause") { if (sym === "escape") scene = prevScene; return; }
+  if (sym === "escape") { prevScene = scene; scene = "pause"; return; }
+
+  if (scene === "tutorial") {
+    let sd = tutState.currentStepData(); if (!sd) return;
+    if (!tutState.started) { if (sym === "f") { tutState.started = true; if (sd.condition_type === "wait_input") tutState.setCleared(); } return; }
+    if (tutState.isCleared && sym === "f") { tutState.advance(); if (!tutState.currentStepData()) { resetGame(); scene = "game"; } else tutSetupStep(tutState, state, player, fb, beam); return; }
+    if (sd.allowed_keys && !sd.allowed_keys.includes("all") && !sd.allowed_keys.includes(sym)) return;
+    if (sym === "space") { state.spaceTriggered = true; tutState.flags.jumped = true; }
+    if (sym === "q" || sym === "e") tutState.flags.rotated = true;
+  }
+
+  const noFallingBlock = (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f");
+
+  if (scene === "boss_70f") bossSys.handleBoss70Input(sym);
+
+  if (sym === "w") { useComboBlock(state, fb); return; }
+
+  const isBoss60Upward = bossSys.isBoss60UpwardActive();
+
+  if (sym === "down") {
+    if (scene === "tutorial") tutState.flags.down_pressed = true;
+  }
+
+  // ハードドロップのトリガーキー：
+  // 通常時（60Fボスの水流が下向きのときも含む）は↑キー、
+  // 60Fボスの水流が上向きのときだけ↓キーがハードドロップになる
+  const hardDropKeyPressed = isBoss60Upward ? (sym === "down") : (sym === "up");
+
+  if (hardDropKeyPressed && !noFallingBlock) {
+    // ハードドロップ：ワンプッシュで即座に落下・固定
+    const isUpward = isBoss60Upward;
+    let hitPlayerDuringDrop = false;
+    if (isUpward) {
+      while (!checkCollision(state, fb, fb.x, fb.y - 1)) fb.y--;
+    } else {
+      while (!checkCollision(state, fb, fb.x, fb.y + 1)) {
+        fb.y++;
+        if (!hitPlayerDuringDrop && checkCrushHarddropSweep(state, fb, player)) hitPlayerDuringDrop = true;
+      }
+    }
+    lockBlock(state, fb);
+
+    // 【50Fボス専用追加分】ハードドロップ固定時の割り込み・強制ロードトリガー[cite: 4]
+    let forcedId = bossSys.getForcedSpawnShapeId();
+    if (forcedId) {
+      fb.spawnBlockForced(forcedId);
+    } else {
+      fb.spawnBlock(state, scene === "tutorial" ? tutState : null, false, scene === "tutorial");
+    }
+
+    checkLineClear(state, true); checkCrushHarddrop(state, player);
+    if (scene === "tutorial") tutState.flags.hard_dropped = true;
+
+    // 【50F追加】固定直後の走査判定[cite: 4]
+    if (scene === "boss_50f") _flush_line_clear_queue_50f();
+  }
+
+  if (sym === "s") state.sTriggered = true;
+
+  if (sym in state.keyStates) state.keyStates[sym] = true;
+  if (sym === "a" || sym === "d") state.lastHkey = sym;
+  if (sym === "space") state.spaceTriggered = true;
+  if (sym === "q" && !noFallingBlock) fb.rotateLeft(state);
+  if (sym === "e" && !noFallingBlock) fb.rotateRight(state);
+  if (sym === "left" && !noFallingBlock) { if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false; }
+  if (sym === "right" && !noFallingBlock) { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
+});
+
+document.addEventListener("keyup", e => {
+  const sym = getKey(e.code); if (sym in state.keyStates) state.keyStates[sym] = false;
+  if (sym === "left") { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  if (sym === "right") { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+});
+
+function getCanvasPos(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) * (SCREEN_WIDTH / r.width), y: (e.clientY - r.top) * (SCREEN_HEIGHT / r.height) }; }
+
+canvas.addEventListener("mousedown", e => {
+  e.preventDefault(); const { x, y } = getCanvasPos(e);
+  if (e.button === 0) {
+    if (scene === "title") { if (hitBtn("btn_play", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else if (hitBtn("btn_quit", x, y)) { quitGame(); } else if (hitBtn("btn_survey_title", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
+    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
+    if (scene === "gameover") { if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_home_go", x, y)) scene = "title"; else if (hitBtn("btn_quit_go", x, y)) { quitGame(); } else if (hitBtn("btn_survey_go", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
+    if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false;
+  }
+  if (e.button === 2) { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
+});
+
+canvas.addEventListener("mouseup", e => {
+  if (e.button === 0) { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  if (e.button === 1) state.keyStates.down = false;
+  if (e.button === 2) { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+});
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+// ============================================================
+// レイアウト（横画面：従来通り中央表示／縦画面：上部にゲーム、下部に操作パネル）
+// ============================================================
+function layoutScreen() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const portrait = vh > vw;
+  const wrapper = document.getElementById("wrapper");
+  const touchEl = document.getElementById("touchControls");
+
+  if (portrait) {
+    const scale = vw / SCREEN_WIDTH;
+    const canvasH = SCREEN_HEIGHT * scale;
+    wrapper.style.transform = `scale(${scale})`;
+    wrapper.style.left = "0px";
+    wrapper.style.top = "0px";
+
+    const panelH = Math.max(0, vh - canvasH);
+    touchEl.style.display = "flex";
+    touchEl.style.top = canvasH + "px";
+    touchEl.style.height = panelH + "px";
+  } else {
+    const scale = Math.min(vw / SCREEN_WIDTH, vh / SCREEN_HEIGHT);
+    const canvasW = SCREEN_WIDTH * scale, canvasH = SCREEN_HEIGHT * scale;
+    wrapper.style.transform = `scale(${scale})`;
+    wrapper.style.left = ((vw - canvasW) / 2) + "px";
+    wrapper.style.top = ((vh - canvasH) / 2) + "px";
+
+    touchEl.style.display = "none";
+  }
+}
+window.addEventListener("resize", layoutScreen);
+window.addEventListener("orientationchange", layoutScreen);
+layoutScreen();
+
+// ============================================================
+// スマホ用タッチ操作パネル
+// ・上半分：プレイヤー移動パネル（タップ位置からのスワイプ方向で8方向入力）
+// ・下半分：ブロック操作パネル（中央＝コンボブロック、周囲4分割＝回転／移動）
+// ・ポーズ操作は未対応（今後対応予定）
+// ============================================================
+(function setupTouchControls() {
+  const playerPad = document.getElementById("playerPad");
+  const blockPad  = document.getElementById("blockPad");
+  const comboBtn  = document.getElementById("comboBtn");
+  const hardDropBtn = document.getElementById("hardDropBtn");
+  const softDropBtn = document.getElementById("softDropBtn");
+  const padRotL   = document.getElementById("padRotL");
+  const padRotR   = document.getElementById("padRotR");
+  const padMoveL  = document.getElementById("padMoveL");
+  const padMoveR  = document.getElementById("padMoveR");
+  const stickBase = document.getElementById("stickBase");
+  const stickKnob = document.getElementById("stickKnob");
+
+  const PLAYABLE_SCENES = ["game", "boss_10f", "boss_20f", "boss_30f", "boss_40f", "boss_50f", "boss_60f", "boss_70f"];
+  function guiActive() { return !!state && PLAYABLE_SCENES.includes(scene); }
+  function noFallingBlockScene() { return scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f"; }
+
+  // ---------- プレイヤー移動パネル（8方向スワイプ） ----------
+  const SWIPE_THRESHOLD = 16; // px（パネル内座標系）
+  const STICK_MAX_R = 42;
+  let playerPointerId = null, startX = 0, startY = 0;
+
+  function clearPlayerKeys() {
+    if (!state) return;
+    state.keyStates.a = false; state.keyStates.d = false;
+    state.keyStates.s = false; state.keyStates.space = false;
+  }
+
+  function applyPlayerDirection(dx, dy) {
+    if (!state) return;
+    clearPlayerKeys();
+    const dist = Math.hypot(dx, dy);
+    if (dist < SWIPE_THRESHOLD) return;
+    const deg = (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360;
+    const sector = Math.round(deg / 45) % 8; // 0:E 1:SE 2:S 3:SW 4:W 5:NW 6:N 7:NE
+    switch (sector) {
+      case 0: state.keyStates.d = true; break;
+      case 1: state.keyStates.d = true; state.keyStates.s = true; break;
+      case 2: state.keyStates.s = true; break;
+      case 3: state.keyStates.a = true; state.keyStates.s = true; break;
+      case 4: state.keyStates.a = true; break;
+      case 5: state.keyStates.a = true; state.keyStates.space = true; break;
+      case 6: state.keyStates.space = true; break;
+      case 7: state.keyStates.d = true; state.keyStates.space = true; break;
+    }
+    if (state.keyStates.a) state.lastHkey = "a";
+    if (state.keyStates.d) state.lastHkey = "d";
+
+    const clamped = Math.min(dist, STICK_MAX_R);
+    const ang = Math.atan2(dy, dx);
+    stickKnob.style.left = (startX + Math.cos(ang) * clamped) + "px";
+    stickKnob.style.top  = (startY + Math.sin(ang) * clamped) + "px";
+  }
+
+  function showStick(x, y) {
+    stickBase.style.display = "block";
+    stickKnob.style.display = "block";
+    stickBase.style.left = x + "px"; stickBase.style.top = y + "px";
+    stickKnob.style.left = x + "px"; stickKnob.style.top = y + "px";
+  }
+  function hideStick() {
+    stickBase.style.display = "none";
+    stickKnob.style.display = "none";
+  }
+
+  playerPad.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (!guiActive()) return;
+    playerPad.setPointerCapture(e.pointerId);
+    playerPointerId = e.pointerId;
+    const r = playerPad.getBoundingClientRect();
+    startX = e.clientX - r.left; startY = e.clientY - r.top;
+    showStick(startX, startY);
+    clearPlayerKeys();
+  });
+  playerPad.addEventListener("pointermove", e => {
+    if (e.pointerId !== playerPointerId) return;
+    const r = playerPad.getBoundingClientRect();
+    applyPlayerDirection((e.clientX - r.left) - startX, (e.clientY - r.top) - startY);
+  });
+  function endPlayerTouch(e) {
+    if (e.pointerId !== playerPointerId) return;
+    playerPointerId = null;
+    clearPlayerKeys();
+    hideStick();
+  }
+  playerPad.addEventListener("pointerup", endPlayerTouch);
+  playerPad.addEventListener("pointercancel", endPlayerTouch);
+
+  // ---------- ブロック操作パネル ----------
+  function bindTap(el, fn) {
+    el.addEventListener("pointerdown", e => {
+      e.preventDefault();
+      if (!guiActive()) return;
+      fn();
+    });
+  }
+  bindTap(comboBtn, () => { useComboBlock(state, fb); });
+  bindTap(padRotL, () => { if (!noFallingBlockScene()) fb.rotateLeft(state); });
+  bindTap(padRotR, () => { if (!noFallingBlockScene()) fb.rotateRight(state); });
+
+  // ハードドロップ：キーボードの「↑」キー押下時と同じ処理（ワンプッシュで即座に落下・固定）
+  function performHardDrop() {
+    if (noFallingBlockScene()) return;
+    const isUpward = bossSys.isBoss60UpwardActive();
+    let hitPlayerDuringDrop = false;
+    if (isUpward) {
+      while (!checkCollision(state, fb, fb.x, fb.y - 1)) fb.y--;
+    } else {
+      while (!checkCollision(state, fb, fb.x, fb.y + 1)) {
+        fb.y++;
+        if (!hitPlayerDuringDrop && checkCrushHarddropSweep(state, fb, player)) hitPlayerDuringDrop = true;
+      }
+    }
+    lockBlock(state, fb);
+
+    let forcedId = bossSys.getForcedSpawnShapeId();
+    if (forcedId) { fb.spawnBlockForced(forcedId); }
+    else { fb.spawnBlock(state, scene === "tutorial" ? tutState : null, false, scene === "tutorial"); }
+
+    checkLineClear(state, true); checkCrushHarddrop(state, player);
+    if (scene === "tutorial") tutState.flags.hard_dropped = true;
+    if (scene === "boss_50f") _flush_line_clear_queue_50f();
+  }
+  bindTap(hardDropBtn, performHardDrop);
+
+  // ソフトドロップ：キーボードの「↓」キー押しっぱなしと同じ（押している間だけ落下を高速化）
+  softDropBtn.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    if (!guiActive()) return;
+    softDropBtn.setPointerCapture(e.pointerId);
+    if (bossSys.isBoss60UpwardActive()) state.keyStates.up = true;
+    else state.keyStates.down = true;
+  });
+  function endSoftDrop() { if (state) { state.keyStates.down = false; state.keyStates.up = false; } }
+  softDropBtn.addEventListener("pointerup", endSoftDrop);
+  softDropBtn.addEventListener("pointercancel", endSoftDrop);
+
+  function startMoveLeft() {
+    if (!guiActive() || noFallingBlockScene()) return;
+    if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
+    bms.rightHeld = false;
+  }
+  function endMoveLeft() { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+  function startMoveRight() {
+    if (!guiActive() || noFallingBlockScene()) return;
+    if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; }
+    bms.leftHeld = false;
+  }
+  function endMoveRight() { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
+
+  padMoveL.addEventListener("pointerdown", e => { e.preventDefault(); padMoveL.setPointerCapture(e.pointerId); startMoveLeft(); });
+  padMoveL.addEventListener("pointerup", endMoveLeft);
+  padMoveL.addEventListener("pointercancel", endMoveLeft);
+  padMoveR.addEventListener("pointerdown", e => { e.preventDefault(); padMoveR.setPointerCapture(e.pointerId); startMoveRight(); });
+  padMoveR.addEventListener("pointerup", endMoveRight);
+  padMoveR.addEventListener("pointercancel", endMoveRight);
+})();
+
+requestAnimationFrame(mainProc);
+</script>
+</body>
+</html>
