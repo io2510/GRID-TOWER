@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>GRID TOWER ～目指せ100F～</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+</div>
+<div id="touchControls">
+  <div id="playerPad">
+    <div id="stickBase"></div>
+    <div id="stickKnob"></div>
+  </div>
+  <div id="blockPad">
+    <div class="blockCol">
+      <div id="padRotL" class="blockQuad"><span class="qLabel">↺回転</span><span class="qSub">Q</span></div>
+      <div id="padMoveL" class="blockQuad"><span class="qLabel">◀移動</span><span class="qSub">←</span></div>
+    </div>
+    <div class="blockCol">
+      <div id="hardDropBtn" class="squareBtn">ハード<br>ドロップ</div>
+      <div id="comboBtn" class="squareBtn">コンボ<br>ブロック</div>
+      <div id="softDropBtn" class="squareBtn">ソフト<br>ドロップ</div>
+    </div>
+    <div class="blockCol">
+      <div id="padRotR" class="blockQuad"><span class="qLabel">回転↻</span><span class="qSub">E</span></div>
+      <div id="padMoveR" class="blockQuad"><span class="qLabel">移動▶</span><span class="qSub">→</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/tutorial_data.js"></script>
+<script src="js/block_data.js"></script>
+<script src="js/game_constants.js"></script>
+<script src="js/boss_data.js"></script>
+<script src="js/boss_manager.js"></script>
+<script src="js/game_logic.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/main.js"></script>
+<script src="js/touch_controls.js"></script>
+<script>requestAnimationFrame(mainProc);</script>
+</body>
+</html>
