@@ -377,6 +377,11 @@ Object.assign(BossManager.prototype, {
     // 「力から生じたトルク」は消える。重さは力、着地・ジャンプは衝撃として別に加わる)
     seesaw.t = -seesaw.a * SEESAW_SPRING_K;
     space.step(B70_STEP_DT);
+    // pymunk(Chipmunk 7)は、ステップごとに力とトルクを自動で0に戻す。
+    // Chipmunk-js(6系)は戻さないため、同じ動きになるよう毎ステップ後に自分で戻す。
+    // (戻さないと、押した力や乗った重さが次のフレーム以降も加わり続け、
+    //  ブロックが飛んでいったり、板が傾きやすくなったりする)
+    for (const body of space.bodies) { body.f = cp.v(0, 0); body.t = 0; }
     b.angle = seesaw.a;
 
     const pHalfW = P_HALF_W;
