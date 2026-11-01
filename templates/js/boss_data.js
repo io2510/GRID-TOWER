@@ -17,15 +17,12 @@ const SEESAW_GUARD_H = 45;
 const MAX_TILT_RADIAN = 35.0 * Math.PI / 180.0;
 const BOSS70_WIN_TIMER_MAX = 180;
 const BOSS70_WIN_RECOVER_RATE = 1;
-// Pymunk実装の完全な物理エンジンはJS側に存在しないため、
-// トルク積分による簡易剛体シミュレーションで近似する。
-// (質量300・moment_for_box相当・乗数6.0・spring復元・damping減衰)
+// 70F の物理は Chipmunk-js(js/lib/cp.js)で、本家の pymunk と同じ構成を再現する(js/boss70.js)。
+// 質量・慣性モーメント(moment_for_box相当 × 乗数6.0)・バネ・減衰は本家と同じ値。
 const SEESAW_MASS = 300.0;
 const SEESAW_MOMENT = (SEESAW_MASS * ((SEESAW_HALF_W * 2) ** 2 + 30 ** 2) / 12) * 6.0;
 const SEESAW_SPRING_K = 30000000.0;
 const SEESAW_SPACE_DAMPING = 0.70;
-const SEESAW_COLS = Math.floor((SEESAW_HALF_W * 2) / GRID_SIZE); // 12列
-const SEESAW_DECK_TOP_LOCAL_Y = -SEESAW_THICKNESS / 2; // デッキ上面のローカルY
 
 const PLAYER_WEIGHT_BLOCKS = 2;
 const JUMP_PRESS_BLOCKS    = 2;
@@ -36,10 +33,6 @@ const IMPULSE_PER_BLOCK    = 1250.0;
 const PLAYER_WEIGHT_FORCE   = PLAYER_WEIGHT_BLOCKS * BLOCK_UNIT_MASS * SEESAW_GRAVITY_CONST;
 const JUMP_PRESS_IMPULSE    = JUMP_PRESS_BLOCKS * IMPULSE_PER_BLOCK;
 const LANDING_PRESS_IMPULSE = LANDING_PRESS_BLOCKS * IMPULSE_PER_BLOCK;
-const PLAYER_PUSH_SPEED = 6.0; // 70Fシーソー：プレイヤーがブロックを押す速さ(通常移動速度と同程度)
-const BOSS70_SLIDE_START_ANGLE = 18.0 * Math.PI / 180.0;
-const BOSS70_SLIDE_FRICTION = 0.985;
-const BOSS70_FALL_MARGIN = GRID_SIZE * 2;
 
 // ============================================================
 // マップ配置データ (boss_data.py 由来)

@@ -87,50 +87,19 @@ function drawBoss70Stage(ctx, state) {
   ctx.lineTo(SEESAW_PIVOT_X + 40, GAME_BOTTOM);
   ctx.closePath(); ctx.fill(); ctx.stroke();
 
-  const cosA = Math.cos(bossSys.boss70.angle), sinA = Math.sin(bossSys.boss70.angle);
-  function localToWorldPoint(lx, ly) { return [SEESAW_PIVOT_X + lx * cosA - ly * sinA, SEESAW_PIVOT_Y + lx * sinA + ly * cosA]; }
-  function drawRotatedRect(lx, ly, hw, hh, fill, outline) {
-    const corners = [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([dx,dy]) => localToWorldPoint(lx+dx, ly+dy));
-    ctx.beginPath(); ctx.moveTo(corners[0][0], corners[0][1]);
-    for (let i=1;i<corners.length;i++) ctx.lineTo(corners[i][0], corners[i][1]);
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.strokeStyle = outline; ctx.lineWidth = 1.5; ctx.stroke();
-  }
-
-  // デッキ + ガード
-  drawRotatedRect(0, SEESAW_DECK_TOP_LOCAL_Y + SEESAW_THICKNESS / 2, SEESAW_HALF_W, SEESAW_THICKNESS / 2, "#ff66cc", "white");
-  drawRotatedRect(-SEESAW_HALF_W + SEESAW_GUARD_W / 2, -SEESAW_GUARD_H / 2, SEESAW_GUARD_W / 2, SEESAW_GUARD_H / 2, "#ff66cc", "white");
-  drawRotatedRect(SEESAW_HALF_W - SEESAW_GUARD_W / 2, -SEESAW_GUARD_H / 2, SEESAW_GUARD_W / 2, SEESAW_GUARD_H / 2, "#ff66cc", "white");
-
-  // 積みブロックは、セルごとにワールド座標を更新して描くのではなく、
-  // ピース単位のローカル座標系で一度だけシーソーの回転を適用する。
-  // これにより、同じピースのセルが個別に傾いたように見えず、
-  // 生成された塊が一体の剛体として傾く。
-  const groups = new Map();
-  for (const b of bossSys.boss70.placedBlocks) {
-    const key = b.groupId === undefined ? `legacy-${b.localX}-${b.localY}` : b.groupId;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(b);
-  }
-  for (const cells of groups.values()) {
-    ctx.save();
-    ctx.translate(SEESAW_PIVOT_X, SEESAW_PIVOT_Y);
-    ctx.rotate(bossSys.boss70.angle);
-    for (const b of cells) {
-      ctx.fillStyle = b.color; ctx.strokeStyle = b.outline; ctx.lineWidth = 1.5;
-      ctx.fillRect(b.localX - GRID_SIZE / 2 + 1, b.localY - GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
-      ctx.strokeRect(b.localX - GRID_SIZE / 2 + 1, b.localY - GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
-    }
-    ctx.restore();
-  }
-
-  // シーソーの端から滑り落ちたブロック（画面端でクランプしない）。
-  for (const b of bossSys.boss70.fallingBlocks) {
-    ctx.save();
-    ctx.translate(b.x, b.y); ctx.rotate(b.angle || 0);
-    ctx.fillStyle = b.color; ctx.strokeStyle = b.outline; ctx.lineWidth = 1.5;
-    ctx.fillRect(-GRID_SIZE / 2 + 1, -GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
-    ctx.strokeRect(-GRID_SIZE / 2 + 1, -GRID_SIZE / 2 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
-    ctx.restore();
+  // 板・置いたブロックは、物理エンジン上の剛体の形(頂点)をそのまま描く。
+  // 置いたブロックはテトリミノ1個が1つの剛体なので、塊のまま傾き、滑り、落ちる。
+  const render = bossSys.getBoss70RenderData();
+  if (render) {
+    const drawPoly = (poly) => {
+      const p = poly.points;
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]);
+      for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+      ctx.closePath(); ctx.fillStyle = poly.fill; ctx.fill();
+      ctx.strokeStyle = poly.outline; ctx.lineWidth = 1.5; ctx.stroke();
+    };
+    for (const poly of render.seesawPolygons) drawPoly(poly);
+    for (const poly of render.placedPolygons) drawPoly(poly);
   }
 
   // アクティブブロック（落下中、自身の角度で回転）

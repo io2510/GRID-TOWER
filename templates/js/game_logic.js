@@ -668,7 +668,7 @@ function updatePlayer(state, fb, player) {
   let hittingBlock = false, blockCache = null;
 
   if (scene === "boss_70f") {
-    player.x = bossSys.resolveBoss70Horizontal(player.x, player.x + player.vx, player.y, P_HALF_W, curPHalfH);
+    [player.x, player.y] = bossSys.resolveBoss70Horizontal(player.x, player.x + player.vx, player.y, P_HALF_W, curPHalfH);
   } else {
     for (const gridY of [upperY, lowerY]) {
       if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
