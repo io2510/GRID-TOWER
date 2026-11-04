@@ -18,10 +18,15 @@ function mainProc(timestamp) {
   globalFrameCount++; // 【50F追加】渦巻きの回転用インクリメントカウンタ
   ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 
+  // 100F戦から離れたら、CPU思考のWorkerを止める
+  if (battle100f.active && !(scene === "boss_100f" || (scene === "pause" && prevScene === "boss_100f"))) battle100f.stop();
+
   if (scene === "title") drawTitle(ctx);
   else if (scene === "quit") drawQuit(ctx);
+  else if (scene === "boss_100f") { updateBoss100F(); if (scene === "boss_100f") { battle100f.draw(ctx); drawBoss100FPortraitNotice(ctx); } else drawBoss100FEnd(ctx); }
+  else if (scene === "boss100f_end") drawBoss100FEnd(ctx);
   else if (sceneover(scene)) drawGameover(ctx, state.score, state.floor);
-  else if (scene === "pause") { drawGame(ctx, state, fb, player, beam); drawPause(ctx); }
+  else if (scene === "pause") { if (prevScene === "boss_100f") battle100f.draw(ctx); else drawGame(ctx, state, fb, player, beam); drawPause(ctx); }
   else {
     const isTut = (scene === "tutorial"); let tutorialPaused = false, blockFrozen = false, isBeamStep = false;
     if (isTut) {
@@ -142,9 +147,10 @@ function getKey(code) {
 
 document.addEventListener("keydown", e => {
   const sym = getKey(e.code); if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
-  if (scene === "title" || scene === "gameover" || scene === "quit") return;
+  if (scene === "title" || scene === "gameover" || scene === "quit" || scene === "boss100f_end") return;
   if (scene === "pause") { if (sym === "escape") scene = prevScene; return; }
-  if (sym === "escape") { prevScene = scene; scene = "pause"; return; }
+  if (sym === "escape") { prevScene = scene; scene = "pause"; if (battle100f.active) battle100f.releaseAll(); return; }
+  if (scene === "boss_100f") { battle100f.onKeyDown(sym, e.repeat); return; }
 
   if (scene === "tutorial") {
     let sd = tutState.currentStepData(); if (!sd) return;
@@ -213,7 +219,7 @@ document.addEventListener("keydown", e => {
 });
 
 document.addEventListener("keyup", e => {
-  const sym = getKey(e.code); if (sym in state.keyStates) state.keyStates[sym] = false;
+  const sym = getKey(e.code); if (battle100f.active) battle100f.onKeyUp(sym); if (sym in state.keyStates) state.keyStates[sym] = false;
   if (sym === "left") { bms.leftHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
   if (sym === "right") { bms.rightHeld = false; bms.holdFrames = 0; bms.repeatAcc = 0; }
 });
@@ -223,12 +229,14 @@ function getCanvasPos(e) { const r = canvas.getBoundingClientRect(); return { x:
 canvas.addEventListener("mousedown", e => {
   e.preventDefault(); const { x, y } = getCanvasPos(e);
   if (e.button === 0) {
-    if (scene === "title") { if (hitBtn("btn_play", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else if (hitBtn("btn_quit", x, y)) { quitGame(); } else if (hitBtn("btn_survey_title", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
-    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
+    if (scene === "title") { if (hitBtn("btn_play", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_100f", x, y)) { startBoss100F(MAX_HP); } else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else if (hitBtn("btn_quit", x, y)) { quitGame(); } else if (hitBtn("btn_survey_title", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
+    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { if (prevScene === "boss_100f") { startBoss100F(MAX_HP); return; } resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
     if (scene === "gameover") { if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_home_go", x, y)) scene = "title"; else if (hitBtn("btn_quit_go", x, y)) { quitGame(); } else if (hitBtn("btn_survey_go", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
+    if (scene === "boss100f_end") { if (hitBtn("btn_retry_b100", x, y)) startBoss100F(MAX_HP); else if (hitBtn("btn_home_b100", x, y)) scene = "title"; return; }
+    if (scene === "boss_100f") return;
     if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false;
   }
-  if (e.button === 2) { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
+  if (e.button === 2 && scene !== "boss_100f") { if (!bms.rightHeld) { bms.rightHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.leftHeld = false; }
 });
 
 canvas.addEventListener("mouseup", e => {

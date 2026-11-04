@@ -386,8 +386,8 @@ function drawTitle(ctx) {
   ctx.strokeStyle = "#334455"; ctx.lineWidth = 2; ctx.strokeRect(cx - 480, 60, 960, H - 120);
   ctx.fillStyle = "#00eeff"; ctx.font = "bold 72px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GRID TOWER", cx, 230);
   ctx.fillStyle = "#aaaacc"; ctx.font = "24px 'DotGothic16', sans-serif"; ctx.fillText("～目指せ100F～", cx, 300);
-  const btnW = 400, btnH = 70, gap = 30, startY = (H - (4 * btnH + 3 * gap)) / 2 + 80;
-  const buttons = [["PLAY", "#22aa55", "#ffffff", "btn_play"],["HARD MODE (未実装)", "#444444", "#aaaaaa", "btn_hard"],["TUTORIAL", "#225588", "#ffffff", "btn_tutorial"],["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"]];
+  const btnW = 400, btnH = 70, gap = 24, startY = (H - (5 * btnH + 4 * gap)) / 2 + 80;
+  const buttons = [["PLAY", "#22aa55", "#ffffff", "btn_play"],["100F BOSS に挑戦 (CPU対戦)", "#aa2244", "#ffffff", "btn_100f"],["HARD MODE (未実装)", "#444444", "#aaaaaa", "btn_hard"],["TUTORIAL", "#225588", "#ffffff", "btn_tutorial"],["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"]];
   _btnRects = {};
   buttons.forEach(([label, bg, fg, tag], i) => {
     const y0 = startY + i * (btnH + gap); ctx.fillStyle = bg; ctx.fillRect(cx - btnW / 2, y0, btnW, btnH);
@@ -431,7 +431,7 @@ function drawTitle(ctx) {
   // アンケートに回答ボタン（パネル左側の余白）
   const surveyBtnW = 300, surveyBtnH = 60;
   const surveyBtnX = (cx - 480 - surveyBtnW) / 2;
-  const surveyBtnY = startY + (4 * btnH + 3 * gap) / 2 - surveyBtnH / 2;
+  const surveyBtnY = startY + (5 * btnH + 4 * gap) / 2 - surveyBtnH / 2;
   ctx.fillStyle = "#aa3377";
   ctx.fillRect(surveyBtnX, surveyBtnY, surveyBtnW, surveyBtnH);
   ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1;
