@@ -128,6 +128,36 @@ class Battle100F {
     this._drawBoard(ctx, this.cpu);
 
     ctx.textAlign = "center";
+
+    if (!this.matchStarted) {
+      this.countdownFrame += 1;
+      if (this.countdownFrame >= COUNTDOWN_SECONDS * ASSUMED_FPS + START_HOLD_FRAMES) this.matchStarted = true;
+      return "running";
+    }
+    if (this.result === null) {
+      this.player.update();
+      this.cpu.update();
+      if (this.player.gameOver) this.result = "defeat";
+      else if (this.cpu.gameOver) this.result = "victory";
+      return "running";
+    }
+    this.resultTimer += 1;
+    if (this.resultTimer >= RESULT_HOLD_FRAMES) return this.result;
+    return "running";
+  }
+
+  playerHp() { return this.player ? this.player.avatar.hp : 0; }
+
+  // ---------- 描画 ----------
+  draw(ctx) {
+    if (!this.active) return;
+    ctx.save();
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#111122"; ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    this._drawBoard(ctx, this.player);
+    this._drawBoard(ctx, this.cpu);
+
+    ctx.textAlign = "center";
     ctx.fillStyle = "#666688"; ctx.font = `14px ${FONT}`;
     ctx.fillText("←→:ブロック移動  Q/E:回転  ↓:高速落下  ↑:ハードドロップ   |   A/D:自機移動  Space:ジャンプ  S:しゃがみ   |   ESC:ポーズ", SCREEN_W / 2, SCREEN_H - 22);
     ctx.fillText("100F BOSS   AI: " + GENOME_LABEL, SCREEN_W / 2, SCREEN_H - 6);
