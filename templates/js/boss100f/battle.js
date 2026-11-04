@@ -257,8 +257,9 @@ class Battle100F {
     const av = b.avatar;
     if (!(av.invincible > 0 && Math.floor(av.invincible / 6) % 2 === 0)) {
       const x0 = ox + av.x - B.P_HALF_W, y0 = oy + av.y - av.halfH;
-      ctx.fillStyle = "#00ff88"; ctx.fillRect(x0, y0, B.P_HALF_W * 2, av.halfH * 2);
-      ctx.strokeStyle = "#005522"; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, y0 + 1, B.P_HALF_W * 2 - 2, av.halfH * 2 - 2);
+      // プレイヤーは本編と同じ見た目(lightgreen+白枠)。CPUは区別のため別色。
+      ctx.fillStyle = b.isCpu ? "#ffaa55" : "lightgreen"; ctx.fillRect(x0, y0, B.P_HALF_W * 2, av.halfH * 2);
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1; ctx.strokeRect(x0 + 0.5, y0 + 0.5, B.P_HALF_W * 2 - 1, av.halfH * 2 - 1);
     }
 
     // HUD
