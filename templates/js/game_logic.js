@@ -203,7 +203,7 @@ class FallingBlock {
   constructor(state = null) { this.x = 0; this.y = 0; this.timer = 0; this.attribute = null; this.shapeId = 1; this.shape = []; this.color = "#ffdd00"; this.outline = "#cc9900"; this.spawnBlock(state || new GameState(), null, true, false); }
   _pickBlockData(state, isTutorial, tutState) {
     if (isTutorial && tutState) { let normal = BLOCKS.filter(b => b.shape_id <= 11); return normal[tutState.blockIndex % normal.length]; }
-    if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) { return BLOCKS.find(b => b.shape_id === RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)]); }
+    if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) { const rareId = RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)]; return BLOCKS.find(b => b.shape_id === rareId); }
     // 通常ブロックの抽選時に50Fボス用ブロック(19〜21)が混ざらないようガード
     let normal = BLOCKS.filter(b => b.shape_id <= 11);
     let candidates = normal.filter(b => !state.recentNormalShapeIds.includes(b.shape_id));
@@ -935,7 +935,8 @@ function updatePlayer(state, fb, player) {
     if (scene === "boss_80f") {
       // 80F: トゲ接触で生まれる足場・初期足場だけを床として扱う(盤面の床判定は使わない)
       const [ry, rg] = resolveBoss80PlatformVertical(player, nextY, player.vy, curPHalfH);
-      player.y = ry; landed = true;
+      // 本家は着地しなかった場合 y = next_y で上書きするため、足場は下からすり抜けられる(天井判定は実質無効)
+      player.y = rg ? ry : nextY; landed = true;
       if (rg) { player.isGrounded = true; player.vy = 0; }
     }
     for (const cx of (scene === "boss_80f" ? [] : [lfootX, rfootX])) {
