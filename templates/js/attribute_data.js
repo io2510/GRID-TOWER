@@ -461,12 +461,37 @@ function getAttrIconImage(attrId) {
 }
 function _iconReady(im) { return im && im.complete && im.naturalWidth > 0; }
 
+// アイコンを描画サイズに合わせて段階的に縮小したキャッシュ(元画像が大きいと、直接縮小するとギザギザ・荒れの原因になる)。
+// 実際の表示は 1920x1080 のキャンバスがCSSで拡大縮小されるため、描画サイズの2倍で作って滑らかに見せる。
+const _iconScaledCache = new Map();
+function _getScaledIcon(icon, drawSize) {
+  const target = Math.max(8, Math.round(drawSize * 2));
+  if (icon.naturalWidth <= target) return icon;
+  const key = icon.src + "@" + target, hit = _iconScaledCache.get(key);
+  if (hit) return hit;
+  let src = icon, w = icon.naturalWidth, h = icon.naturalHeight;
+  while (w > target) {
+    const nw = Math.max(target, Math.round(w / 2)), nh = Math.max(Math.round(target * h / icon.naturalWidth), Math.round(h / 2));
+    const c = document.createElement("canvas"); c.width = nw; c.height = nh;
+    const g = c.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, nw, nh);
+    src = c; w = nw; h = nh;
+  }
+  _iconScaledCache.set(key, src); return src;
+}
+function _drawIcon(ctx, icon, cx, cy, size) {
+  const im = _getScaledIcon(icon, size);
+  const prev = ctx.imageSmoothingEnabled, prevQ = ctx.imageSmoothingQuality;
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(im, cx - size / 2, cy - size / 2, size, size);
+  ctx.imageSmoothingEnabled = prev; ctx.imageSmoothingQuality = prevQ;
+}
+
 function getBlockVisual(attrId) { const d = getAttrDef(attrId); return d ? { fill: d.block_color, outline: d.block_outline } : null; }
 
 function drawBlockAttributeOverlay(ctx, cx, cy, attrId, cellSize, sizeScale = 1) {
   const d = getAttrDef(attrId); if (!d) return;
   const icon = getAttrIconImage(attrId);
-  if (_iconReady(icon)) { const s = cellSize * 0.7 * sizeScale; ctx.drawImage(icon, cx - s / 2, cy - s / 2, s, s); }
+  if (_iconReady(icon)) { const s = cellSize * 0.7 * sizeScale; _drawIcon(ctx, icon, cx, cy, s); }
   else { const r = cellSize * 0.35 * sizeScale; ctx.fillStyle = d.marker_color; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); }
 }
 
@@ -476,7 +501,7 @@ function drawPlayerAttributeIcons(ctx, centerX, topY, attrIds) {
   const size = 12, gap = 4, totalW = attrIds.length * size + (attrIds.length - 1) * gap, startX = centerX - totalW / 2;
   attrIds.forEach((id, i) => {
     const d = getAttrDef(id), cx = startX + i * (size + gap) + size / 2, icon = getAttrIconImage(id);
-    if (_iconReady(icon)) ctx.drawImage(icon, cx - size / 2, topY - size / 2, size, size);
+    if (_iconReady(icon)) _drawIcon(ctx, icon, cx, topY, size);
     else { ctx.fillStyle = d.marker_color; ctx.beginPath(); ctx.arc(cx, topY, size / 2, 0, Math.PI * 2); ctx.fill(); }
   });
 }
