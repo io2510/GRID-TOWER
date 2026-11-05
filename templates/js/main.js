@@ -152,7 +152,37 @@ function getKey(code) {
   return map[code] || code.toLowerCase().replace("key","");
 }
 
+// ---- 隠しコマンド: タイトル画面で階数(例: 80)を入力して Enter → その階から開始(ボス階ならボス戦へ直行) ----
+let titleCmd = "";
+function startFromFloor(n) {
+  if (n === 100) { startBoss100F(MAX_HP); return; }
+  resetGame();
+  // 開始階より下のボスは撃破済み扱い(でないと階層上限でボス階へ引き戻される)
+  if (n > 10) bossSys.cursedBeamActive = true;
+  if (n > 20) bossSys.targetReached = true;
+  if (n > 30) bossSys.boss30Cleared = true;
+  if (n > 40) bossSys.boss40Cleared = true;
+  if (n > 50) bossSys.boss50Cleared = true;
+  if (n > 60) bossSys.boss60Cleared = true;
+  if (n > 70) bossSys.boss70.cleared = true;
+  if (n > 80) bossSys.boss80.cleared = true;
+  state.floor = n; state.notifiedFloor = n; state.floorLines = 0;
+  scene = "game";
+}
+function handleTitleCommandKey(e) {
+  const m = /^(?:Digit|Numpad)(\d)$/.exec(e.code);
+  if (m) { if (titleCmd.length < 3) titleCmd += m[1]; return; }
+  if (e.code === "Backspace") { titleCmd = titleCmd.slice(0, -1); return; }
+  if (e.code === "Enter" || e.code === "NumpadEnter") {
+    const n = parseInt(titleCmd, 10); titleCmd = "";
+    if (n >= 1 && n <= 100) startFromFloor(n);
+    return;
+  }
+  if (e.code === "Escape") titleCmd = "";
+}
+
 document.addEventListener("keydown", e => {
+  if (scene === "title") handleTitleCommandKey(e);
   const sym = getKey(e.code); if (["space","down","up","left","right"].includes(sym)) e.preventDefault();
   if (scene === "title" || scene === "gameover" || scene === "quit" || scene === "boss100f_end") return;
   if (scene === "pause") { if (sym === "escape") scene = prevScene; return; }

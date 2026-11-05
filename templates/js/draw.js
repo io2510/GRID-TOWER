@@ -440,6 +440,7 @@ function drawTitle(ctx) {
   ctx.strokeStyle = "#334455"; ctx.lineWidth = 2; ctx.strokeRect(cx - 480, 60, 960, H - 120);
   ctx.fillStyle = "#00eeff"; ctx.font = "bold 72px 'DotGothic16', sans-serif"; ctx.textAlign = "center"; ctx.fillText("GRID TOWER", cx, 230);
   ctx.fillStyle = "#aaaacc"; ctx.font = "24px 'DotGothic16', sans-serif"; ctx.fillText("～目指せ100F～", cx, 300);
+  if (typeof titleCmd === "string" && titleCmd) { ctx.fillStyle = "#667788"; ctx.font = "20px 'DotGothic16', sans-serif"; ctx.fillText(`> ${titleCmd}F  [Enter]`, cx, 335); }
   const btnW = 400, btnH = 70, gap = 24, startY = (H - (5 * btnH + 4 * gap)) / 2 + 80;
   const buttons = [["PLAY", "#22aa55", "#ffffff", "btn_play"],["100F BOSS に挑戦 (CPU対戦)", "#aa2244", "#ffffff", "btn_100f"],["HARD MODE (未実装)", "#444444", "#aaaaaa", "btn_hard"],["TUTORIAL", "#225588", "#ffffff", "btn_tutorial"],["QUIT GAME", "#444444", "#aaaaaa", "btn_quit"]];
   _btnRects = {};
