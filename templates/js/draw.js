@@ -581,6 +581,14 @@ function drawGameover(ctx, score, floorReached) {
     _btnRects[tag] = { x: cx - btnW / 2, y: y0, w: btnW, h: btnH };
   });
 
+  // セーブポイントからの再開ボタン。画面左側に単独で配置する(本家と同じ)
+  const loadW = 320, loadH = 80, loadX = 120, loadY = H / 2 - loadH / 2;
+  ctx.fillStyle = "#116633"; ctx.fillRect(loadX, loadY, loadW, loadH);
+  ctx.strokeStyle = "#66ff99"; ctx.lineWidth = 2; ctx.strokeRect(loadX, loadY, loadW, loadH);
+  ctx.fillStyle = "#ffffff"; ctx.font = "bold 30px 'DotGothic16', sans-serif"; ctx.fillText("LOAD", loadX + loadW / 2, loadY + loadH / 2 - 4);
+  ctx.fillStyle = "#aaffcc"; ctx.font = "16px 'DotGothic16', sans-serif"; ctx.fillText(`FLOOR ${checkpoint.floor}`, loadX + loadW / 2, loadY + loadH / 2 + 24);
+  _btnRects.btn_load_go = { x: loadX, y: loadY, w: loadW, h: loadH };
+
   // アンケートに回答ボタン（ボタン列の下に追加）
   const surveyBtnW = 400, surveyBtnH = 60, surveyBtnY = startY + buttons.length * (btnH + gap) + 10;
   ctx.fillStyle = "#aa3377";

@@ -2,7 +2,35 @@
 // メインループ ＆ イベント
 // ============================================================
 let state, tutState, fb, player, beam, bms;
+// セーブポイント: 直近まで居たフロアとスコアだけを毎フレーム記録する(盤面やコンボは保存しない)。ゲームオーバーの LOAD で使う。
+const checkpoint = { floor: 1, score: 0 };
+
+// 開始階より下のボスは撃破済みにする(隠しコマンド・LOAD用。でないと階層上限でボス階へ引き戻される)。
+// 開始階そのものがボス階なら、そのボス戦は最初から始まる。
+function markBossesClearedBelow(n) {
+  if (n > 10) bossSys.cursedBeamActive = true;
+  if (n > 20) bossSys.targetReached = true;
+  if (n > 30) bossSys.boss30Cleared = true;
+  if (n > 40) bossSys.boss40Cleared = true;
+  if (n > 50) bossSys.boss50Cleared = true;
+  if (n > 60) bossSys.boss60Cleared = true;
+  if (n > 70) bossSys.boss70.cleared = true;
+  if (n > 80) bossSys.boss80.cleared = true;
+  if (n > 90) bossSys.boss90.cleared = true;
+}
+
+// セーブポイントからの再開
+function loadCheckpoint() {
+  const f = checkpoint.floor, sc = checkpoint.score;
+  resetGame();
+  markBossesClearedBelow(f);
+  state.floor = f; state.score = sc; state.notifiedFloor = f;
+  if (f >= ATTR_FIRST_NORMAL_FLOOR) state.nextBlockAttribute = fb._pickAttribute(state);
+  scene = "game";
+}
+
 function resetGame() {
+  checkpoint.floor = 1; checkpoint.score = 0;
   state = new GameState(); tutState = new TutorialState(); fb = new FallingBlock(state); player = new Player(); beam = new BeamState(); bms = new BlockMoveState(); bossSys.reset_all();
 }
 resetGame();
@@ -25,10 +53,12 @@ function mainProc(timestamp) {
   else if (scene === "quit") drawQuit(ctx);
   else if (scene === "boss_100f") { updateBoss100F(); if (scene === "boss_100f") { battle100f.draw(ctx); drawBoss100FPortraitNotice(ctx); } else drawBoss100FEnd(ctx); }
   else if (scene === "boss100f_end") drawBoss100FEnd(ctx);
+  else if (scene === "game" && state.floor >= 100) enterBoss100FFromGame();   // 100Fに到達したらボス戦(CPU対戦)へ
   else if (sceneover(scene)) drawGameover(ctx, state.score, state.floor);
   else if (scene === "pause") { if (prevScene === "boss_100f") battle100f.draw(ctx); else drawGame(ctx, state, fb, player, beam); drawPause(ctx); }
   else {
     const isTut = (scene === "tutorial"); let tutorialPaused = false, blockFrozen = false, isBeamStep = false;
+    if (!isTut) { checkpoint.floor = state.floor; checkpoint.score = state.score; }   // このフレーム開始時点の到達地点を保存
     if (isTut) {
       if (tutState._needsSetup) tutSetupStep(tutState, state, player, fb, beam);
       let sd = tutState.currentStepData();
@@ -181,15 +211,7 @@ function startFromFloor(n) {
   if (n === 100) { startBoss100F(MAX_HP); return; }
   resetGame();
   // 開始階より下のボスは撃破済み扱い(でないと階層上限でボス階へ引き戻される)
-  if (n > 10) bossSys.cursedBeamActive = true;
-  if (n > 20) bossSys.targetReached = true;
-  if (n > 30) bossSys.boss30Cleared = true;
-  if (n > 40) bossSys.boss40Cleared = true;
-  if (n > 50) bossSys.boss50Cleared = true;
-  if (n > 60) bossSys.boss60Cleared = true;
-  if (n > 70) bossSys.boss70.cleared = true;
-  if (n > 80) bossSys.boss80.cleared = true;
-  if (n > 90) bossSys.boss90.cleared = true;
+  markBossesClearedBelow(n);
   state.floor = n; state.notifiedFloor = n; state.floorLines = 0;
   if (n >= ATTR_FIRST_NORMAL_FLOOR) { state.nextBlockAttribute = fb._pickAttribute(state); fb.attribute = fb._pickAttribute(state); }
   scene = "game";
@@ -292,8 +314,8 @@ canvas.addEventListener("mousedown", e => {
   e.preventDefault(); const { x, y } = getCanvasPos(e);
   if (e.button === 0) {
     if (scene === "title") { if (hitBtn("btn_play", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_100f", x, y)) { startBoss100F(MAX_HP); } else if (hitBtn("btn_tutorial", x, y)) { resetGame(); tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else if (hitBtn("btn_quit", x, y)) { quitGame(); } else if (hitBtn("btn_survey_title", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
-    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { if (prevScene === "boss_100f") { startBoss100F(MAX_HP); return; } resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
-    if (scene === "gameover") { if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_home_go", x, y)) scene = "title"; else if (hitBtn("btn_quit_go", x, y)) { quitGame(); } else if (hitBtn("btn_survey_go", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
+    if (scene === "pause") { if (hitBtn("btn_resume", x, y)) scene = prevScene; else if (hitBtn("btn_retry_pause", x, y)) { if (prevScene === "boss_100f") { if (b100FromGame) { resetGame(); scene = "game"; } else startBoss100F(MAX_HP); return; } resetGame(); if (prevScene === "tutorial") { tutState.reset(); tutSetupStep(tutState, state, player, fb, beam); scene = "tutorial"; } else scene = "game"; } else if (hitBtn("btn_home_pause", x, y)) scene = "title"; else if (hitBtn("btn_quit_pause", x, y)) { quitGame(); } return; }
+    if (scene === "gameover") { if (hitBtn("btn_retry_go", x, y)) { resetGame(); scene = "game"; } else if (hitBtn("btn_load_go", x, y)) { loadCheckpoint(); } else if (hitBtn("btn_home_go", x, y)) scene = "title"; else if (hitBtn("btn_quit_go", x, y)) { quitGame(); } else if (hitBtn("btn_survey_go", x, y)) { window.open(SURVEY_FORM_URL, "_blank"); } return; }
     if (scene === "boss100f_end") { if (hitBtn("btn_retry_b100", x, y)) startBoss100F(MAX_HP); else if (hitBtn("btn_home_b100", x, y)) scene = "title"; return; }
     if (scene === "boss_100f") return;
     if (!bms.leftHeld) { bms.leftHeld = true; bms.holdFrames = 0; bms.repeatAcc = 0; } bms.rightHeld = false;
