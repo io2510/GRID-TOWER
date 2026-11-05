@@ -20,13 +20,20 @@ function drawNextBlock(ctx, state) {
       ctx.strokeStyle = ndata.outline; ctx.lineWidth = 1; ctx.strokeRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
     }
   }
+  // 次に落ちてくるブロックの属性を、形状の右側に大きく表示(90F・91F以降のみ)
+  const nextAttr = (scene === "boss_70f") ? null : state.nextBlockAttribute;
+  const nextAttrDef = getAttrDef(nextAttr);
+  if (nextAttrDef) {
+    const icx = mapCenterX + blockW / 2 + 60, icy = originY + minDy * cellSize + blockH / 2;
+    drawBlockAttributeOverlay(ctx, icx, icy, nextAttr, 80 / 0.7 / 1, 1);
+  }
   ctx.strokeStyle = "#555555"; ctx.lineWidth = 1; ctx.strokeRect(mapLeftX, areaTop, mapRightX - mapLeftX, areaH);
 
   if (scene.startsWith("boss_")) {
     const placeholderTop = areaTop + areaH + 40; ctx.fillStyle = "#222233"; ctx.fillRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
     ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
     ctx.fillStyle = "white"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
-    const bossFileMap = { "boss_10f":"boss10.png", "boss_20f":"boss20.png", "boss_30f":"boss30.png", "boss_40f":"boss40.png", "boss_50f":"boss50.png", "boss_60f":"boss60.png", "boss_70f":"boss70.png", "boss_80f":"boss80.png" };
+    const bossFileMap = { "boss_10f":"boss10.png", "boss_20f":"boss20.png", "boss_30f":"boss30.png", "boss_40f":"boss40.png", "boss_50f":"boss50.png", "boss_60f":"boss60.png", "boss_70f":"boss70.png", "boss_80f":"boss80.png", "boss_90f":"boss90.png" };
     let bossFile = bossFileMap[scene] || "boss_default.png";
     ctx.fillText("[ BOSS STANDING IMAGE ]", mapCenterX, placeholderTop + 145); ctx.fillText(`(assets/${bossFile})`, mapCenterX, placeholderTop + 170);
   }
@@ -72,6 +79,39 @@ function drawBoss60UnderwaterBg(ctx, state) {
 
 // 70F: シーソーの土台・積みブロック・アクティブブロックを描画
 // 80F: トゲ・ゴール(文字なし)・生成された足場の描画
+// 90F: ミッション進捗と、今クリアすべきミッション(化学反応 or 特定ブロックに乗る)をアイコンで表示
+function drawBoss90Ui(ctx, cx) {
+  const b = bossSys.boss90, goal = b.currentGoal;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "cyan"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText(`MISSION ${b.clearedCount} / ${BOSS90_MISSION_TARGET}`, cx, GAME_TOP + 150);
+  if (!goal) return;
+  const cy = GAME_TOP + 320;
+  const drawIcon = (x, y, attrId, radius) => drawBlockAttributeOverlay(ctx, x, y, attrId, radius / 0.35, 1);
+  ctx.font = "13px 'DotGothic16', sans-serif";
+  if (goal.type === "reaction") {
+    const gap = 60, [a, bb] = goal.attrs;
+    drawIcon(cx - gap - 30, cy, a, 50); drawIcon(cx + gap + 30, cy, bb, 50);
+    ctx.fillStyle = "white"; ctx.font = "bold 40px 'DotGothic16', sans-serif"; ctx.fillText("×", cx, cy + 14);
+    ctx.fillStyle = "#cccccc"; ctx.font = "13px 'DotGothic16', sans-serif";
+    ctx.fillText(`${getAttrDef(a).name} × ${getAttrDef(bb).name} を反応させる`, cx, cy + 82);
+  } else {
+    drawIcon(cx, cy, goal.attr, 60);
+    ctx.fillStyle = "#cccccc"; ctx.font = "13px 'DotGothic16', sans-serif";
+    ctx.fillText(`${getAttrDef(goal.attr).name}ブロックの上に乗る`, cx, cy + 95);
+  }
+  if (b.goalClearFlash > 0) { ctx.fillStyle = "#66ff66"; ctx.font = "bold 22px 'DotGothic16', sans-serif"; ctx.fillText("CLEAR!", cx, cy + 138); }
+}
+
+// 端数HP(0.5ダメージ等)対応のハート描画。左から hp ぶんだけ赤く塗る
+function drawHeartRatio(ctx, x, y, ratio) {
+  ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = "#444444"; ctx.fillText("♥", x, y);
+  if (ratio <= 0) return;
+  if (ratio >= 1) { ctx.fillStyle = "#ff3333"; ctx.fillText("♥", x, y); return; }
+  ctx.save(); ctx.beginPath(); ctx.rect(x - 25, y - 40, 50 * ratio, 60); ctx.clip();
+  ctx.fillStyle = "#ff3333"; ctx.fillText("♥", x, y); ctx.restore();
+}
+
 function drawBoss80Stage(ctx, state) {
   if (scene !== "boss_80f") return;
   const flash = Math.floor(Date.now() / 250) % 2 === 0;
@@ -209,7 +249,8 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
         ctx.strokeStyle = "#ffffbb"; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
       } else if (val >= 1) {
         let shapeId = Math.floor(val / 1000);
-        let col = is_fixed_terrain(val) ? { fill:"gray", outline:"#444444" } : (BLOCK_COLOR_MAP[shapeId] || { fill:"#888888", outline:"#444444" });
+        const cellAttr = is_fixed_terrain(val) ? null : state.attrMap[y][x];   // 属性ブロック(90F・91F以降のみ)
+        let col = is_fixed_terrain(val) ? { fill:"gray", outline:"#444444" } : (getBlockVisual(cellAttr) || BLOCK_COLOR_MAP[shapeId] || { fill:"#888888", outline:"#444444" });
         ctx.fillStyle = col.fill; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
         ctx.strokeStyle = col.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
         
@@ -219,6 +260,7 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
           let cellCy = GAME_TOP + y * GRID_SIZE + GRID_SIZE / 2;
           drawSwirlCell(ctx, cellCx, cellCy, shapeId, globalFrameCount);
         }
+        if (cellAttr) drawBlockAttributeOverlay(ctx, GAME_LEFT + x * GRID_SIZE + GRID_SIZE / 2, GAME_TOP + y * GRID_SIZE + GRID_SIZE / 2, cellAttr, GRID_SIZE);
       }
     }
   }
@@ -251,7 +293,9 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
       }
     }
     for (const [gx,gy] of fb.getCells()) { 
-      ctx.fillStyle = fb.color; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); ctx.strokeStyle = fb.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); 
+      const fbVis = getBlockVisual(fb.attribute);
+      ctx.fillStyle = fbVis ? fbVis.fill : fb.color; ctx.fillRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE); ctx.strokeStyle = fbVis ? fbVis.outline : fb.outline; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + gx * GRID_SIZE, GAME_TOP + gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+      if (fb.attribute) drawBlockAttributeOverlay(ctx, GAME_LEFT + gx * GRID_SIZE + GRID_SIZE / 2, GAME_TOP + gy * GRID_SIZE + GRID_SIZE / 2, fb.attribute, GRID_SIZE);
       
       // 【50Fボス専用追加分】落下中の反転ブロック(19〜21)への渦巻き描画
       if (fb.shapeId === 19 || fb.shapeId === 20 || fb.shapeId === 21) {
@@ -267,6 +311,7 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
     const drawHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
     ctx.fillStyle = player.invincible > 0 ? "#ffaaaa" : "lightgreen"; ctx.fillRect(player.x - P_HALF_W, player.y - drawHalfH, P_HALF_W * 2, drawHalfH * 2);
     ctx.strokeStyle = "white"; ctx.lineWidth = 1; ctx.strokeRect(player.x - P_HALF_W, player.y - drawHalfH, P_HALF_W * 2, drawHalfH * 2);
+    drawPlayerAttributeIcons(ctx, player.x, player.y - drawHalfH - 16, player.attrState.activeIds());   // 付着中の属性(頭上)
   }
 
   // 警告
@@ -342,6 +387,8 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
     ctx.fillStyle = "#aaaacc"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
     let b60 = ["60F BOSS MISSION", "", "水中ステージを攻略せよ！", "", "【下向き水流】", "ブロックは上から落下", "Spaceでジャンプ", "", "【上向き水流】", "ブロックは下から浮上", "Sキーで潜り（下方向ジャンプ）", "↑で速度上昇、↓でハードドロップ", "", "【クリア条件】", "4列消去×4回（計16列）"];
     b60.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 460 + i * 20));
+  } else if (scene === "boss_90f") {
+    drawBoss90Ui(ctx, canvasX);
   } else if (scene === "boss_80f") {
     ctx.fillStyle = "#ff6677"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("80F SPIKE MISSION", canvasX, GAME_TOP + 220);
     ctx.fillStyle = "#8dffb0"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`PLATFORMS: ${bossSys.getBoss80CreatedPlatformCount()}`, canvasX, GAME_TOP + 275);
@@ -386,7 +433,11 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
     }
   } else {
     ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", canvasX, hpY - 40);
-    for (let i = 0; i < MAX_HP; i++) { let sx = canvasX - (MAX_HP - 1) * 25; ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+    for (let i = 0; i < MAX_HP; i++) {
+      let sx = canvasX - (MAX_HP - 1) * 25;
+      if (Number.isInteger(player.hp)) { ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+      else drawHeartRatio(ctx, sx + i * 50, hpY + 10, Math.max(0, Math.min(1, player.hp - i)));
+    }
   }
 
   // HUD 右側 (階層マップ)
@@ -408,6 +459,9 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
   ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(GAME_LEFT, GAME_TOP, GAME_RIGHT - GAME_LEFT, GAME_BOTTOM - GAME_TOP);
   ctx.strokeStyle = "cyan"; ctx.lineWidth = 1; ctx.strokeRect(40, GAME_TOP, GAME_LEFT - 80, GAME_BOTTOM - GAME_TOP);
   ctx.strokeStyle = "yellow"; ctx.lineWidth = 2; ctx.strokeRect(GAME_RIGHT + 40, GAME_TOP, SCREEN_WIDTH - GAME_RIGHT - 80, GAME_BOTTOM - GAME_TOP);
+
+  // 闇に触れた後の視界暗転(他の描画すべてより後、最後に重ねる)
+  if (player.darknessFrames > 0) drawDarknessOverlay(ctx, state, player);
 }
 
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {

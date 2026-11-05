@@ -68,9 +68,23 @@ class BossManager {
 
     // 80F: トゲ迷路。接触した場所に足場が生成される
     this.boss80 = { cleared: false, platforms: [], startPlatform: null };
+
+    // 90F・91F以降: 属性ブロック。attrMap等は 90F 専用データなので GameState ではなくこちらが保持する
+    // (GameState 側は同名のアクセサ経由で透過的に読み書きする)
+    this.attrMap = makeEmptyAttrMap(MAP_WIDTH, MAP_HEIGHT);
+    this.nextBlockAttribute = null;
+    this.recentAttrIds = [];
+    this.ironContactTimers = new Map();
+    this.sandSink = new Map();
+    this.savedAttrMap = null;
+    this.boss90 = { cleared: false, recentGoalIds: [], currentGoal: null, goalPrevResultCount: 0, goalClearFlash: 0, clearedCount: 0 };
   }
   saveCurrentMap(blockMap) { this.savedBlockMap = blockMap.map(row => [...row]); }
-  restorePreviousMap(state) { if (this.savedBlockMap) { state.blockMap = this.savedBlockMap.map(row => [...row]); } }
+  restorePreviousMap(state) {
+    if (this.savedBlockMap) { state.blockMap = this.savedBlockMap.map(row => [...row]); }
+    if (this.savedAttrMap) { this.attrMap = this.savedAttrMap.map(row => [...row]); }
+  }
+  saveCurrentAttrMap(attrMap) { this.savedAttrMap = attrMap.map(row => [...row]); }
   
   generateBossStage(state, floor) {
     this.bossFloor = floor;
@@ -132,6 +146,15 @@ class BossManager {
       this.boss60PhaseCount = 0;
       this.boss60LinesInPhase = 0;
       this.boss60Cleared = false;
+    } else if (floor === 90) {
+      this.attrMap = makeEmptyAttrMap(MAP_WIDTH, MAP_HEIGHT);
+      this.nextBlockAttribute = null; this.recentAttrIds = []; this.ironContactTimers = new Map(); this.sandSink = new Map();
+      const b = this.boss90;
+      b.recentGoalIds = [];
+      b.currentGoal = CLEAR_GOALS[Math.floor(Math.random() * CLEAR_GOALS.length)];
+      b.recentGoalIds.push(b.currentGoal.id);
+      b.goalPrevResultCount = _boss90CountAttrOccurrences(state, b.currentGoal);
+      b.goalClearFlash = 0; b.clearedCount = 0; b.cleared = false;
     } else if (floor === 80) {
       for (let y = 0; y < MAP_HEIGHT; y++) {
         for (let x = 0; x < MAP_WIDTH; x++) {
@@ -406,6 +429,52 @@ class BossManager {
   }
 
   // --------------------------------------------------------
+  // --------------------------------------------------------
+  // 90F: 属性ブロック戦(本家 boss_data.py の *boss90* 群と同じ)
+  // --------------------------------------------------------
+  isBoss90Context() { return this.isBossActive && this.bossFloor === 90; }
+
+  pickNewBoss90Goal(state) {
+    const b = this.boss90;
+    let cands = CLEAR_GOALS.filter(g => !b.recentGoalIds.includes(g.id));
+    if (cands.length === 0) cands = CLEAR_GOALS;
+    const choice = cands[Math.floor(Math.random() * cands.length)];
+    b.recentGoalIds.push(choice.id);
+    if (b.recentGoalIds.length > GOAL_RECENT_EXCLUDE_COUNT) b.recentGoalIds.shift();
+    b.goalPrevResultCount = _boss90CountAttrOccurrences(state, choice);
+    return choice;
+  }
+
+  _boss90PlayerStandingAttr(state, player, curPHalfH) {
+    if (player.onWind) return ATTR_WIND;
+    if (!player.isGrounded) return null;
+    const footGy = Math.trunc((player.y + curPHalfH - GAME_TOP) / GRID_SIZE);
+    for (const px of [player.x - P_HALF_W + 2, player.x + P_HALF_W - 2]) {
+      const gx = Math.trunc((px - GAME_LEFT) / GRID_SIZE);
+      if (gx >= 0 && gx < MAP_WIDTH && footGy >= 0 && footGy < MAP_HEIGHT) {
+        if (state.blockMap[footGy][gx] >= 1) { const a = state.attrMap[footGy][gx]; if (a !== null) return a; }
+      }
+    }
+    return null;
+  }
+
+  // 毎フレーム。ミッション達成判定。規定回数クリアで boss90.cleared を立てる
+  updateBoss90Goal(state, player, curPHalfH) {
+    const b = this.boss90;
+    if (b.goalClearFlash > 0) b.goalClearFlash -= 1;
+    const goal = b.currentGoal; if (!goal) return;
+    let cleared;
+    if (goal.type === "reaction") {
+      const cur = _boss90CountAttrOccurrences(state, goal);
+      cleared = cur > b.goalPrevResultCount; b.goalPrevResultCount = cur;
+    } else cleared = this._boss90PlayerStandingAttr(state, player, curPHalfH) === goal.attr;
+    if (cleared) {
+      b.goalClearFlash = GOAL_CLEAR_FLASH_FRAMES; b.clearedCount += 1;
+      if (b.clearedCount >= BOSS90_MISSION_TARGET) b.cleared = true;
+      else b.currentGoal = this.pickNewBoss90Goal(state);
+    }
+  }
+
   // 80F: トゲ迷路(本家 boss_data.py の *boss80* 群と同じ)
   // --------------------------------------------------------
   getBoss80SpawnPosition() { return [GAME_LEFT + GRID_SIZE, GAME_BOTTOM - 2 * GRID_SIZE - P_HALF_H]; }

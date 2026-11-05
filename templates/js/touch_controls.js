@@ -17,7 +17,7 @@
   const stickBase = document.getElementById("stickBase");
   const stickKnob = document.getElementById("stickKnob");
 
-  const PLAYABLE_SCENES = ["game", "boss_10f", "boss_20f", "boss_30f", "boss_40f", "boss_50f", "boss_60f", "boss_70f", "boss_80f"];
+  const PLAYABLE_SCENES = ["game", "boss_10f", "boss_20f", "boss_30f", "boss_40f", "boss_50f", "boss_60f", "boss_70f", "boss_80f", "boss_90f"];
   function guiActive() { return !!state && PLAYABLE_SCENES.includes(scene); }
   function noFallingBlockScene() { return scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f"; }
 

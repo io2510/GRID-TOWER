@@ -138,6 +138,38 @@ const BOSS_80F_MAP = [
   [0,0,2,0,2,2,2,2,0,2,2,2,2,0,0,0],
 ];
 
+// ============================================================
+// 90F ボス戦: 属性クリア条件(ミッション)。本家 CLEAR_GOALS と同じ。
+//  "reaction": 2つの属性を反応させる(結果属性がマップ上に新しく増えたら達成)
+//  "stand"   : 指定した属性のブロックの上に乗る
+// ============================================================
+const CLEAR_GOALS = [
+  { id: "grass_fire",    type: "reaction", attrs: [ATTR_GRASS, ATTR_FIRE],     result: ATTR_GRASS_BURNT },
+  { id: "grass_water",   type: "reaction", attrs: [ATTR_GRASS, ATTR_WATER],    result: ATTR_GRASS_GROWN },
+  { id: "grass_poison",  type: "reaction", attrs: [ATTR_GRASS, ATTR_POISON],   result: ATTR_GRASS_ROTTEN },
+  { id: "water_poison",  type: "reaction", attrs: [ATTR_WATER, ATTR_POISON],   result: ATTR_WATER_POISONED },
+  { id: "water_thunder", type: "reaction", attrs: [ATTR_WATER, ATTR_THUNDER],  result: ATTR_WATER_CHARGED },
+  { id: "ice_thunder",   type: "reaction", attrs: [ATTR_ICE, ATTR_THUNDER],    result: ATTR_ICE_SUPERCONDUCTIVE },
+  { id: "iron_thunder",  type: "reaction", attrs: [ATTR_IRON, ATTR_THUNDER],   result: ATTR_IRON_MAGNETIC },
+  { id: "stand_wind", type: "stand", attr: ATTR_WIND },
+  { id: "stand_sand", type: "stand", attr: ATTR_SAND },
+  { id: "stand_ice",  type: "stand", attr: ATTR_ICE },
+  { id: "stand_iron", type: "stand", attr: ATTR_IRON },
+];
+const GOAL_CLEAR_FLASH_FRAMES = 90;     // "CLEAR!" を表示し続けるフレーム数
+const GOAL_RECENT_EXCLUDE_COUNT = 4;    // 直近このぶんだけ選ばれたミッションは抽選から除外
+const BOSS90_MISSION_TARGET = 10;       // このぶんクリアしたらボス撃破
+const ATTR_FIRST_NORMAL_FLOOR = 91;     // 90F突破後は通常フロアでも落下ブロックに属性が付く
+const NORMAL_FLOOR_ATTR_CHANCE = 1.0;
+const ATTR_ROLL_RECENT_EXCLUDE_COUNT = 4;
+
+function boss90GoalTargetAttrs(goal) { return goal.type === "reaction" ? new Set(goal.attrs) : new Set([goal.attr]); }
+function _boss90CountAttrOccurrences(state, goal) {
+  if (goal.type !== "reaction") return 0;
+  let n = 0; for (const row of state.attrMap) for (const a of row) if (a === goal.result) n++;
+  return n;
+}
+
 function encode_fixed_terrain(serial) { return FIXED_TERRAIN_BASE + serial; }
 // 通常ID（shape_id * 1000 + serial）の50F反転ブロック(19〜21)が除外されるよう固定地形判定を調整
 function is_fixed_terrain(block_id) { return block_id >= FIXED_TERRAIN_BASE && block_id !== 9999; }

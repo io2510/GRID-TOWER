@@ -68,6 +68,13 @@ function mainProc(timestamp) {
         scene = "boss_70f";
         teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
       }
+      else if (state.floor === 90 && !bossSys.isBossActive && scene === "game" && !bossSys.boss90.cleared) {
+        flushLineClearQueue(state);
+        bossSys.saveCurrentAttrMap(state.attrMap);
+        bossSys.generateBossStage(state, 90);
+        scene = "boss_90f";
+        teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      }
       else if (state.floor === 80 && !bossSys.isBossActive && scene === "game" && !bossSys.boss80.cleared) {
         flushLineClearQueue(state);
         bossSys.generateBossStage(state, 80);
@@ -77,6 +84,16 @@ function mainProc(timestamp) {
       }
 
       // ボス固有更新処理
+      if (scene === "boss_90f") {
+        // 90F: ミッション達成判定。規定回数クリアで撃破(化学反応・属性付着は下の毎フレーム処理が担当)
+        bossSys.updateBoss90Goal(state, player, player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H);
+        if (bossSys.boss90.cleared) {
+          bossSys.isBossActive = false; scene = "game"; player.hp = MAX_HP;
+          teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+          bossSys.restorePreviousMap(state); state.floor = 91; state.floorLines = 0; state.notifiedFloor = 91;
+          flushLineClearQueue(state, false);
+        }
+      }
       if (scene === "boss_20f") { bossSys.bossTimer--; if (bossSys.bossTimer <= 0) scene = "gameover"; }
       else if (scene === "boss_30f") {
         let pGx = Math.floor((player.x - GAME_LEFT) / GRID_SIZE);
@@ -136,7 +153,13 @@ function mainProc(timestamp) {
 
       processLineClearQueue(state); updateBlockMove(state, fb, bms);
       if (!blockFrozen && !(scene === "boss_60f" && bossSys.isBoss60Transition())) updateFallingBlock(state, fb, isTut, isTut ? tutState : null);
-      updatePlayer(state, fb, player); applyGravityPushOnly(state, fb); applyGravityToBlocks(state); checkCrush(state, fb, player);
+      updatePlayer(state, fb, player);
+      const attrActive = isAttrActive(state);
+      if (attrActive) { updateSandSink(state, player, player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H); updateSandGravity(state); }
+      applyGravityPushOnly(state, fb); applyGravityToBlocks(state);
+      // その回の重力・落下が確定した後に、反応判定→接触判定の順で行う
+      if (attrActive) { updateBoss90BlockReactions(state, fb); updateBoss90AttributeContact(state, player); }
+      checkCrush(state, fb, player);
       updateBeam(beam, player, isBeamStep ? 1800 : null);
     }
     if (isTut) tutCheckStepCondition(tutState, state, player, fb, beam);
@@ -166,7 +189,9 @@ function startFromFloor(n) {
   if (n > 60) bossSys.boss60Cleared = true;
   if (n > 70) bossSys.boss70.cleared = true;
   if (n > 80) bossSys.boss80.cleared = true;
+  if (n > 90) bossSys.boss90.cleared = true;
   state.floor = n; state.notifiedFloor = n; state.floorLines = 0;
+  if (n >= ATTR_FIRST_NORMAL_FLOOR) { state.nextBlockAttribute = fb._pickAttribute(state); fb.attribute = fb._pickAttribute(state); }
   scene = "game";
 }
 function handleTitleCommandKey(e) {

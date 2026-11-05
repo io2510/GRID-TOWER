@@ -20,7 +20,8 @@ function getOrdinal(n) {
 }
 
 function capFloorAtBoss(state) {
-  if (state.floor >= 80 && !bossSys.boss80.cleared) state.floor = 80;
+  if (state.floor >= 90 && !bossSys.boss90.cleared) state.floor = 90;
+  else if (state.floor >= 80 && !bossSys.boss80.cleared) state.floor = 80;
   else if (state.floor >= 70 && !bossSys.boss70.cleared) state.floor = 70;
   else if (state.floor >= 60 && !bossSys.boss60Cleared) state.floor = 60;
   else if (state.floor >= 50 && !bossSys.boss50Cleared) state.floor = 50; // 【50F追加】
@@ -40,6 +41,14 @@ function getBeamCycle(floor) {
   if (floor < 10) return Infinity;
   if (floor >= 90) return 200;
   return 600 - Math.floor((floor - 10) / 10) * 50;
+}
+
+// 90Fボス中だけは、落下間隔を50Fボスと同じ値に固定する(本家 _resolve_fall_interval と同じ)。
+// 90F特有の化学反応で複数の駒が同時に落ちる演出と相まって、素のテーブル値(最速)だとかなり速く感じるため。
+function resolveFallInterval(floor, isFast) {
+  let base = isFast ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(floor);
+  if (bossSys.isBoss90Context()) base = getFallInterval(50);
+  return bossSys.getAdjustedFallInterval(base);
 }
 
 function getFallInterval(floor) {
@@ -174,15 +183,24 @@ class GameState {
   }
 }
 
+// 属性関連のデータは 90F 専用なので BossManager が持つ。GameState からは同名のアクセサで透過的に読み書きする。
+for (const _k of ["attrMap", "nextBlockAttribute", "recentAttrIds", "ironContactTimers", "sandSink"]) {
+  Object.defineProperty(GameState.prototype, _k, { get() { return bossSys[_k]; }, set(v) { bossSys[_k] = v; } });
+}
+
 class Player {
-  constructor() { this.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); this.y = GAME_BOTTOM - 20; this.vx = 0; this.vy = 0; this.isGrounded = false; this.pushTimerL = 0; this.pushTimerR = 0; this.hp = MAX_HP; this.invincible = 0; this.blinkVisible = true; this.isCrouching = false; this.prevHalfH = P_HALF_H; }
+  constructor() { this.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); this.y = GAME_BOTTOM - 20; this.vx = 0; this.vy = 0; this.isGrounded = false; this.pushTimerL = 0; this.pushTimerR = 0; this.hp = MAX_HP; this.invincible = 0; this.blinkVisible = true; this.isCrouching = false; this.prevHalfH = P_HALF_H;
+    // 90F・91F以降の属性まわり
+    this.attrState = new PlayerAttributeState(); this.stunFrames = 0; this.darknessFrames = 0; this.iceSpeedBoost = false;
+    this.horizontalVelocity = 0; this.onWind = false; this.windState = "rising"; this.windHeight = 0; this.windPhase = 0;
+  }
 }
 
 class BeamState { constructor() { this.timer = 0; this.col = 0; this.showTimer = 0; this.phase = "wait"; this.blinkOn = true; } }
 class BlockMoveState { constructor() { this.leftHeld = false; this.rightHeld = false; this.holdFrames = 0; this.repeatAcc = 0; } }
 
 class FallingBlock {
-  constructor(state = null) { this.x = 0; this.y = 0; this.timer = 0; this.shapeId = 1; this.shape = []; this.color = "#ffdd00"; this.outline = "#cc9900"; this.spawnBlock(state || new GameState(), null, true, false); }
+  constructor(state = null) { this.x = 0; this.y = 0; this.timer = 0; this.attribute = null; this.shapeId = 1; this.shape = []; this.color = "#ffdd00"; this.outline = "#cc9900"; this.spawnBlock(state || new GameState(), null, true, false); }
   _pickBlockData(state, isTutorial, tutState) {
     if (isTutorial && tutState) { let normal = BLOCKS.filter(b => b.shape_id <= 11); return normal[tutState.blockIndex % normal.length]; }
     if (RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) { return BLOCKS.find(b => b.shape_id === RARE_BLOCK_IDS[Math.floor(Math.random() * RARE_BLOCK_IDS.length)]); }
@@ -195,12 +213,27 @@ class FallingBlock {
     if (state.recentNormalShapeIds.length > NORMAL_BLOCK_NO_REPEAT_WINDOW) state.recentNormalShapeIds.shift();
     return choice;
   }
+  // 落下ブロックに付与する属性を抽選する。属性が付くのは 90Fボス戦中と、突破後の通常フロア(91F以降)だけ。
+  // それ以外では乱数も消費せず null を返す(=今まで通り無属性)。
+  _pickAttribute(state) {
+    const inBoss90 = bossSys.isBoss90Context();
+    const inPost = state.floor >= ATTR_FIRST_NORMAL_FLOOR && !bossSys.isBossActive;
+    if (!(inBoss90 || inPost)) return null;
+    let boostIds = null, chance = BLOCK_ATTR_CHANCE;
+    if (inBoss90) { const g = bossSys.boss90.currentGoal; if (g) boostIds = boss90GoalTargetAttrs(g); }
+    else chance = NORMAL_FLOOR_ATTR_CHANCE;
+    const a = rollBlockAttribute(chance, state.recentAttrIds, boostIds);
+    if (a !== null) { state.recentAttrIds.push(a); if (state.recentAttrIds.length > ATTR_ROLL_RECENT_EXCLUDE_COUNT) state.recentAttrIds.shift(); }
+    return a;
+  }
   spawnBlock(state, tutState = null, isInit = false, isTutorial = false) {
     if (!isInit) { state.blockCount += 1; state.rareCountdown -= 1; }
-    if (!state.nextBlockData) state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    if (!state.nextBlockData) { state.nextBlockData = this._pickBlockData(state, isTutorial, tutState); state.nextBlockAttribute = this._pickAttribute(state); }
     let data = (isTutorial && tutState) ? BLOCKS.filter(b => b.shape_id <= 11)[tutState.blockIndex % BLOCKS.filter(b => b.shape_id <= 11).length] : state.nextBlockData;
     if (isTutorial && tutState) tutState.blockIndex += 1;
+    this.attribute = (isTutorial && tutState) ? null : state.nextBlockAttribute;
     state.nextBlockData = this._pickBlockData(state, isTutorial, tutState);
+    state.nextBlockAttribute = this._pickAttribute(state);
     if (!isTutorial && RARE_BLOCK_IDS.length > 0 && state.rareCountdown <= 0) state.rareCountdown = Math.floor(Math.random() * 5) + 28;
     this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline;
     const maxDx = Math.max(...this.shape.map(([dx]) => dx));
@@ -212,7 +245,7 @@ class FallingBlock {
   spawnBlockForced(shapeId) {
     let data = BLOCKS.find(b => b.shape_id === shapeId);
     if (!data) return;
-    this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline;
+    this.shapeId = data.shape_id; this.shape = data.shape.map(([dx,dy]) => [dx,dy]); this.color = data.color; this.outline = data.outline; this.attribute = null;
     const maxDx = Math.max(...this.shape.map(([dx]) => dx));
     this.x = Math.floor((MAP_WIDTH - maxDx) / 2); this.y = 0; this.timer = 0;
     if (bossSys.isBoss60Context()) this.y = bossSys.getBoss60SpawnY(this.shape, this.y);
@@ -260,7 +293,7 @@ function checkCollision(state, fb, nx, ny) { return _shapeCollides(state, fb.sha
 
 function lockBlock(state, fb) {
   const mapValue = fb.shapeId * 1000 + state.nextSerial;
-  for (const [gx,gy] of fb.getCells()) { if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT) state.blockMap[gy][gx] = mapValue; }
+  for (const [gx,gy] of fb.getCells()) { if (gx >= 0 && gx < MAP_WIDTH && gy >= 0 && gy < MAP_HEIGHT) { state.blockMap[gy][gx] = mapValue; state.attrMap[gy][gx] = fb.attribute; } }
   state.nextSerial += 1;
 }
 
@@ -306,9 +339,11 @@ function processLineClearQueue(state) {
   if (bossSys.isBoss60Upward()) {
     for (let ty = row; ty < MAP_HEIGHT - 1; ty++) state.blockMap[ty] = [...state.blockMap[ty + 1]];
     state.blockMap[MAP_HEIGHT - 1] = new Array(MAP_WIDTH).fill(0);
+    shiftAttrRowsDown(state.attrMap, row, MAP_HEIGHT);
   } else {
     for (let ty = row; ty > 0; ty--) state.blockMap[ty] = [...state.blockMap[ty - 1]];
     state.blockMap[0] = new Array(MAP_WIDTH).fill(0);
+    shiftAttrRowsUp(state.attrMap, row);
   }
   state.score += SCORE_PER_LINE;
 
@@ -378,7 +413,7 @@ function tryDropBlocksByOne(state, blockIds, blockCache, extraBlockedCells = nul
       if (extraBlockedCells && extraBlockedCells.has(`${cx},${ny}`)) { canDrop = false; break; }
     }
     if (canDrop) {
-      cells.slice().sort((a, b) => b[1] - a[1]).forEach(([cx, cy]) => { state.blockMap[cy + 1][cx] = blockId; state.blockMap[cy][cx] = 0; });
+      cells.slice().sort((a, b) => b[1] - a[1]).forEach(([cx, cy]) => { state.blockMap[cy + 1][cx] = blockId; state.blockMap[cy][cx] = 0; moveAttrCell(state.attrMap, cx, cy, cx, cy + 1); });
     } else settledIds.add(blockId);
   }
   return settledIds;
@@ -412,7 +447,7 @@ function applyGravityPushOnly(state, fb) {
   if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f") return;
   if (state.pushedBlockIds.size === 0) return;
 
-  state.pushGravityTimer += 1; const interval = bossSys.getAdjustedFallInterval(state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor));
+  state.pushGravityTimer += 1; const interval = resolveFallInterval(state.floor, !!state.keyStates.down);
   if (state.pushGravityTimer < interval) return;
   state.pushGravityTimer = 0;
   const fbCells = new Set(fb.getCells().map(c => `${c[0]},${c[1]}`)); const blockCache = state.getBlockCache();
@@ -444,7 +479,7 @@ function applyGravityToBlocks(state) {
     return;
   }
 
-  state.gravityTimer += 1; const interval = bossSys.getAdjustedFallInterval(state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor));
+  state.gravityTimer += 1; const interval = resolveFallInterval(state.floor, !!state.keyStates.down);
   if (state.gravityTimer < interval) return;
   state.gravityTimer = 0;
 
@@ -491,6 +526,78 @@ function applyPlayerDamage(p) {
   else teleportPlayer(p);
 }
 
+// ============================================================
+// 90Fボス・91F以降: 属性ブロックの化学反応と接触(本家 update_boss90_* と同じ)
+// ============================================================
+function isAttrActive(state) {
+  return bossSys.isBoss90Context() || (state.floor >= ATTR_FIRST_NORMAL_FLOOR && !bossSys.isBossActive);
+}
+
+function isBlockSupported(state, cells) {
+  const set = new Set(cells.map(([x, y]) => `${x},${y}`));
+  for (const [cx, cy] of cells) {
+    const ny = cy + 1;
+    if (ny >= MAP_HEIGHT) return true;
+    if (set.has(`${cx},${ny}`)) continue;
+    if (state.blockMap[ny][cx] >= 1) return true;
+  }
+  return false;
+}
+
+// 化学反応で駒が消えた直後などに、支えを失って浮いた駒を落下キューに入れる
+function markUnsupportedBlocksForGravity(state) {
+  const cache = state.getBlockCache();
+  for (const bid of Object.keys(cache)) {
+    const id = Number(bid);
+    if (id === 9999 || is_fixed_terrain(id)) continue;
+    if (!isBlockSupported(state, cache[bid])) state.pushedBlockIds.add(id);
+  }
+}
+
+// 砂属性セルは、真下に支えが無ければ押されなくても自然に崩れ落ちる(セル単位)
+function updateSandGravity(state) {
+  const cache = state.getBlockCache();
+  for (let y = 0; y < MAP_HEIGHT; y++) for (let x = 0; x < MAP_WIDTH; x++) {
+    let mv = state.blockMap[y][x];
+    if (mv < 1 || state.attrMap[y][x] !== ATTR_SAND) continue;
+    if (state.pushedBlockIds.has(mv)) continue;
+    const ny = y + 1;
+    if (ny >= MAP_HEIGHT || state.blockMap[ny][x] !== 0) continue;
+    const cells = cache[mv] || [];
+    if (cells.length > 1) {
+      // このマスの砂だけを新しい1マス駒として切り離す
+      const newId = Math.floor(mv / 1000) * 1000 + state.nextSerial; state.nextSerial += 1;
+      state.blockMap[y][x] = newId; mv = newId;
+    }
+    state.pushedBlockIds.add(mv);
+  }
+}
+
+function updateBoss90BlockReactions(state, fb) {
+  updateGrassReactions(state); updateWaterReactions(state); updateIceReactions(state); updateIronReactions(state);
+  updateMagneticIron(state); updateDarkReactions(state); updateAttributeReactions(state, fb);
+  markUnsupportedBlocksForGravity(state);
+}
+
+// 属性のダメージ(炎の継続ダメージ等)。通常ヒットと違い無敵時間は付与しない
+function applyBoss90AttributeDamage(player, amount, stunFrames) {
+  player.hp = Math.max(0, player.hp - amount);
+  if (stunFrames > 0) player.stunFrames = Math.max(player.stunFrames, stunFrames);
+  if (player.hp <= 0) { player.hp = 0; scene = "gameover"; }
+}
+
+function updateBoss90AttributeContact(state, player) {
+  const curPHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+  const touched = checkAttributeContact(player, state.attrMap, curPHalfH);
+  for (const id of touched) for (const actual of getPlayerAttachIds(id)) player.attrState.tryAttach(actual);
+  updateIceContactEffects(state, player, touched, curPHalfH);
+  updateIronContactEffects(state, player, curPHalfH);
+  updateDarkContactEffects(player, touched);
+  updateLightContactEffects(player, touched);
+  for (const [, amount, stun] of updateStatusCombos(player)) { applyBoss90AttributeDamage(player, amount, stun); if (scene === "gameover") return; }
+  for (const [, amount, stun] of player.attrState.update()) { applyBoss90AttributeDamage(player, amount, stun); if (scene === "gameover") break; }
+}
+
 function checkCrush(state, fb, p) {
   if (p.invincible > 0 || !p.isGrounded) return;
   // 【当たり判定修復】マージン無しだと、斜めブロックが「1マス空けて浮いた」状態で着地した際に
@@ -502,9 +609,14 @@ function checkCrush(state, fb, p) {
   const fbCells = (scene === "boss_20f" || scene === "boss_40f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
   for (const cx of [lx, rx]) {
     if (cx < 0 || cx >= MAP_WIDTH) continue;
-    if (fbCells.has(`${cx},${headGy}`) || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999 && state.blockMap[headGy][cx] !== SPIKE_ID)) {
-      applyPlayerDamage(p); break;
+    const inFb = fbCells.has(`${cx},${headGy}`);
+    let above = inFb || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999 && state.blockMap[headGy][cx] !== SPIKE_ID);
+    // 水など「すり抜けられる」属性のブロックは、頭上にあっても押しつぶし判定の対象外
+    if (above) {
+      if (inFb) { if (isPassableAttr(fb.attribute)) above = false; }
+      else if (isPassableAttr(state.attrMap[headGy][cx])) above = false;
     }
+    if (above) { applyPlayerDamage(p); break; }
   }
 }
 
@@ -514,6 +626,7 @@ function checkCrushHarddrop(state, p) {
   const checkYs = [Math.floor((p.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE), Math.floor((p.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)];
   for (const cy of checkYs) for (const cx of checkXs) {
     if (cx >= 0 && cx < MAP_WIDTH && cy >= 0 && cy < MAP_HEIGHT && state.blockMap[cy][cx] >= 1 && state.blockMap[cy][cx] !== 9999 && state.blockMap[cy][cx] !== SPIKE_ID) {
+      if (isPassableAttr(state.attrMap[cy][cx])) continue;
       applyPlayerDamage(p); return;
     }
   }
@@ -548,7 +661,7 @@ function checkBoss20fGoal(state, p) {
 }
 
 function updateBeam(beam, player, forcedCycle = null) {
-  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_60f" || scene === "boss_70f" || scene === "boss_80f") { beam.timer = 0; beam.phase = "wait"; return; }
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_60f" || scene === "boss_70f" || scene === "boss_80f" || scene === "boss_90f") { beam.timer = 0; beam.phase = "wait"; return; }
   const currentCycle = forcedCycle !== null ? forcedCycle : getBeamCycle(state.floor);
   if (currentCycle === Infinity && !bossSys.isBossActive) { beam.timer = 0; beam.phase = "wait"; return; }
   let cycle = (bossSys.isBossActive && !bossSys.cursedBeamActive) ? 600 : currentCycle;
@@ -593,8 +706,7 @@ function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
   if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f") return;
   const isUpward = bossSys.isBoss60UpwardActive();
   const isFast = isUpward ? !!state.keyStates.up : !!state.keyStates.down;
-  let interval = isFast ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
-  interval = bossSys.getAdjustedFallInterval(interval);
+  const interval = resolveFallInterval(state.floor, isFast);
   fb.timer += 1; if (fb.timer < interval) return;
   fb.timer = 0;
 
@@ -629,7 +741,7 @@ function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
 function isSolidAll(state, fb, gx, gy) {
   if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
   if (state.blockMap[gy][gx] === 9999 || state.blockMap[gy][gx] === SPIKE_ID) return false;
-  if (state.blockMap[gy][gx] >= 1) return true;
+  if (state.blockMap[gy][gx] >= 1) return !isPassableAttr(state.attrMap[gy][gx]);
   if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_80f") return false;
   for (const [fx,fy] of fb.getCells()) { if (fx === gx && fy === gy) return true; }
   return false;
@@ -669,7 +781,13 @@ function updatePlayer(state, fb, player) {
     isPlayerReversed = effects.playerReversed;
   }
 
-  const isCrouching = !!ks.s;
+  // 雷などの痺れ状態: カウントダウンしつつ、その間は入力を一切受け付けない(属性ブロックのある階だけで起こる)
+  const isStunned = player.stunFrames > 0;
+  if (isStunned) player.stunFrames -= 1;
+  // 闇に触れた後の視界暗転タイマー
+  if (player.darknessFrames > 0) player.darknessFrames -= 1;
+
+  const isCrouching = !!ks.s && !isStunned;
   player.isCrouching = isCrouching;
   const curPHalfH = isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
   const curMoveSpeed = isCrouching ? CROUCH_MOVE_SPEED : MOVE_SPEED;
@@ -683,11 +801,32 @@ function updatePlayer(state, fb, player) {
   }
   player.prevHalfH = curPHalfH;
 
-  player.vx = 0;
-  if (ks.a && ks.d) player.vx = (state.lastHkey === "a") ? -curMoveSpeed : curMoveSpeed;
-  else if (ks.a) player.vx = -curMoveSpeed; else if (ks.d) player.vx = curMoveSpeed;
+  // 横移動(氷の上では入力加速+慣性滑走)
+  const iceSurfaceAttr = getPlayerIceSurfaceAttr(state, player, curPHalfH);
+  if (iceSurfaceAttr === null) player.iceSpeedBoost = false;
 
-  if (isPlayerReversed) player.vx = -player.vx; // 【50F追加】左右入力速度の鏡像反転
+  player.vx = 0;
+  if (!isStunned) {
+    if (iceSurfaceAttr !== null) {
+      let maxSpeed, accel, friction;
+      if (iceSurfaceAttr === ATTR_ICE_SUPERCONDUCTIVE || player.iceSpeedBoost) { maxSpeed = ICE_SUPER_MAX_SPEED; accel = ICE_SUPER_ACCELERATION; friction = ICE_SUPER_FRICTION; }
+      else { maxSpeed = ICE_SLIDE_MAX_SPEED; accel = ICE_SLIDE_ACCELERATION; friction = ICE_SLIDE_FRICTION; }
+      let direction = 0;
+      if (ks.a && ks.d) { if (state.lastHkey === "a") direction = -1; else if (state.lastHkey === "d") direction = 1; }
+      else if (ks.a) direction = -1; else if (ks.d) direction = 1;
+      if (isPlayerReversed) direction = -direction;
+      if (direction) player.horizontalVelocity += (direction * maxSpeed - player.horizontalVelocity) * accel;
+      else player.horizontalVelocity *= friction;
+      player.horizontalVelocity = Math.max(-maxSpeed, Math.min(maxSpeed, player.horizontalVelocity));
+      player.vx = player.horizontalVelocity;
+    } else {
+      if (ks.a && ks.d) player.vx = (state.lastHkey === "a") ? -curMoveSpeed : curMoveSpeed;
+      else if (ks.a) player.vx = -curMoveSpeed; else if (ks.d) player.vx = curMoveSpeed;
+
+      if (isPlayerReversed) player.vx = -player.vx; // 【50F追加】左右入力速度の鏡像反転
+      player.horizontalVelocity = player.vx;
+    }
+  } else player.horizontalVelocity = 0;
 
   const upperY = Math.floor((player.y - (curPHalfH - 1) - GAME_TOP) / GRID_SIZE);
   const lowerY = Math.floor((player.y + (curPHalfH - 1) - GAME_TOP) / GRID_SIZE);
@@ -700,33 +839,33 @@ function updatePlayer(state, fb, player) {
   } else {
     for (const gridY of [upperY, lowerY]) {
       if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
-      if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999 && state.blockMap[gridY][nextLx] !== SPIKE_ID) {
+      if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999 && state.blockMap[gridY][nextLx] !== SPIKE_ID && !isPassableAttr(state.attrMap[gridY][nextLx])) {
         hittingBlock = true; let targetId = state.blockMap[gridY][nextLx];
         if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
         if (!blockCache) blockCache = state.getBlockCache();
         let cells = blockCache[targetId] || [];
-        let canPush = cells.every(([cx,cy]) => cx - 1 >= 0 && (state.blockMap[cy][cx-1] === 0 || state.blockMap[cy][cx-1] === targetId));
+        let canPush = !(cells.length && isHeavyAttr(state.attrMap[cells[0][1]][cells[0][0]])) && cells.every(([cx,cy]) => cx - 1 >= 0 && (state.blockMap[cy][cx-1] === 0 || state.blockMap[cy][cx-1] === targetId));
         player.pushTimerR = 0;
         if (canPush) {
           player.pushTimerL += 1;
           if (player.pushTimerL >= PUSH_DELAY) {
-            cells.sort((a,b) => a[0]-b[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx-1] = targetId; state.blockMap[cy][cx] = 0; });
+            cells.sort((a,b) => a[0]-b[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx-1] = targetId; state.blockMap[cy][cx] = 0; moveAttrCell(state.attrMap, cx, cy, cx - 1, cy); });
             player.pushTimerL = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
           } else player.vx = 0;
         } else player.vx = 0;
         break;
       }
-      if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999 && state.blockMap[gridY][nextRx] !== SPIKE_ID) {
+      if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999 && state.blockMap[gridY][nextRx] !== SPIKE_ID && !isPassableAttr(state.attrMap[gridY][nextRx])) {
         hittingBlock = true; let targetId = state.blockMap[gridY][nextRx];
         if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
         if (!blockCache) blockCache = state.getBlockCache();
         let cells = blockCache[targetId] || [];
-        let canPush = cells.every(([cx,cy]) => cx + 1 < MAP_WIDTH && (state.blockMap[cy][cx+1] === 0 || state.blockMap[cy][cx+1] === targetId));
+        let canPush = !(cells.length && isHeavyAttr(state.attrMap[cells[0][1]][cells[0][0]])) && cells.every(([cx,cy]) => cx + 1 < MAP_WIDTH && (state.blockMap[cy][cx+1] === 0 || state.blockMap[cy][cx+1] === targetId));
         player.pushTimerL = 0;
         if (canPush) {
           player.pushTimerR += 1;
           if (player.pushTimerR >= PUSH_DELAY) {
-            cells.sort((a,b) => b[0]-a[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx+1] = targetId; state.blockMap[cy][cx] = 0; });
+            cells.sort((a,b) => b[0]-a[0]).forEach(([cx,cy]) => { state.blockMap[cy][cx+1] = targetId; state.blockMap[cy][cx] = 0; moveAttrCell(state.attrMap, cx, cy, cx + 1, cy); });
             player.pushTimerR = 0; state.pushedBlockIds.add(targetId); state.pushGravityTimer = 0;
           } else player.vx = 0;
         } else player.vx = 0;
@@ -741,10 +880,35 @@ function updatePlayer(state, fb, player) {
 
   if (player.vy === null || player.vy === undefined) player.vy = 0;
 
+  // 風ブロックに乗っている間の滞空(属性ブロックのある階だけで起こる)
+  if (player.onWind) {
+    const lfx = Math.trunc((player.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE), rfx = Math.trunc((player.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
+    const startGy = Math.trunc((player.y - GAME_TOP) / GRID_SIZE);
+    let windSurfaceGy = null;
+    for (const cx of [lfx, rfx]) {
+      const row = findSolidRowBelow(state.blockMap, cx, startGy, MAP_WIDTH, MAP_HEIGHT);
+      if (row !== null && state.attrMap[row][cx] === ATTR_WIND) { if (windSurfaceGy === null || row < windSurfaceGy) windSurfaceGy = row; }
+    }
+    if (windSurfaceGy === null) player.onWind = false;   // 風から外れた。下の通常処理に切り替わる
+    else {
+      const surfaceTopY = GAME_TOP + windSurfaceGy * GRID_SIZE; let heightCells;
+      if (player.windState === "rising") {
+        player.windHeight += WIND_RISE_SPEED_CELLS;
+        if (player.windHeight >= WIND_FLOAT_MIN_CELLS) { player.windHeight = WIND_FLOAT_MIN_CELLS; player.windState = "floating"; player.windPhase = 0; }
+        heightCells = player.windHeight;
+      } else {
+        player.windPhase += (2 * Math.PI) / WIND_FLOAT_PERIOD_FRAMES;
+        heightCells = windFloatHeightCells(player.windPhase);
+      }
+      player.y = surfaceTopY - heightCells * GRID_SIZE - curPHalfH; player.vy = 0; player.isGrounded = false;
+    }
+  }
+
+  if (!player.onWind) {
   if (!player.isGrounded) player.vy += GRAVITY;
   else {
     player.vy = 0;
-    if (ks.space && !bossSys.isBoss60Context()) { player.vy = JUMP_SPEED; player.isGrounded = false; }
+    if (ks.space && !bossSys.isBoss60Context() && !isStunned) { player.vy = JUMP_SPEED; player.isGrounded = false; }
   }
 
   if (bossSys.isBoss60Context()) {
@@ -785,7 +949,12 @@ function updatePlayer(state, fb, player) {
         }
       } else {
         if (player.vy >= 0 && footGy >= 0 && footGy < MAP_HEIGHT && isSolidAll(state, fb, cx, footGy)) {
-          player.y = footGy * GRID_SIZE + GAME_TOP - curPHalfH; player.isGrounded = true; landed = true; break;
+          player.y = footGy * GRID_SIZE + GAME_TOP - curPHalfH; player.isGrounded = true; landed = true;
+          if (cx >= 0 && cx < MAP_WIDTH && state.attrMap[footGy][cx] === ATTR_WIND) {
+            // 風ブロックに着地した瞬間、滞空モードへ切り替える
+            player.onWind = true; player.windState = "rising"; player.windHeight = 0; player.isGrounded = false;
+          }
+          break;
         }
         if (player.vy < 0 && headGy >= 0 && headGy < MAP_HEIGHT && isSolidAll(state, fb, cx, headGy)) {
           player.y = (headGy + 1) * GRID_SIZE + GAME_TOP + curPHalfH; player.vy = 0; landed = true; break;
@@ -799,6 +968,11 @@ function updatePlayer(state, fb, player) {
       if (isUpward) player.isGrounded = true;
       if (player.vy < 0) player.vy = 0;
     }
+  }
+  } // end !player.onWind
+  if (player.onWind) {   // 風に乗っている間も画面上下の端には収める
+    if (player.y > GAME_BOTTOM - curPHalfH) { player.y = GAME_BOTTOM - curPHalfH; player.isGrounded = true; player.vy = 0; }
+    if (player.y < GAME_TOP + curPHalfH) { player.y = GAME_TOP + curPHalfH; if (player.vy < 0) player.vy = 0; }
   }
 
   // 20F
