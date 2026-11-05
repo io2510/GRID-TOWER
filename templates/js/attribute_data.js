@@ -465,13 +465,15 @@ function _iconReady(im) { return im && im.complete && im.naturalWidth > 0; }
 // 実際の表示は 1920x1080 のキャンバスがCSSで拡大縮小されるため、描画サイズの2倍で作って滑らかに見せる。
 const _iconScaledCache = new Map();
 function _getScaledIcon(icon, drawSize) {
-  const target = Math.max(8, Math.round(drawSize * 2));
-  if (icon.naturalWidth <= target) return icon;
+  const W = icon.naturalWidth, H = icon.naturalHeight, long = Math.max(W, H);
+  const target = Math.max(8, Math.round(drawSize * 2));   // 長辺の目標サイズ
+  if (long <= target) return icon;
   const key = icon.src + "@" + target, hit = _iconScaledCache.get(key);
   if (hit) return hit;
-  let src = icon, w = icon.naturalWidth, h = icon.naturalHeight;
-  while (w > target) {
-    const nw = Math.max(target, Math.round(w / 2)), nh = Math.max(Math.round(target * h / icon.naturalWidth), Math.round(h / 2));
+  const k = target / long, fw = Math.max(1, Math.round(W * k)), fh = Math.max(1, Math.round(H * k));
+  let src = icon, w = W, h = H;
+  while (w > fw || h > fh) {   // 縦横比を保ったまま、最大でも半分ずつ縮小
+    const nw = Math.max(fw, Math.round(w / 2)), nh = Math.max(fh, Math.round(h / 2));
     const c = document.createElement("canvas"); c.width = nw; c.height = nh;
     const g = c.getContext("2d"); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(src, 0, 0, nw, nh);
     src = c; w = nw; h = nh;
@@ -482,7 +484,10 @@ function _drawIcon(ctx, icon, cx, cy, size) {
   const im = _getScaledIcon(icon, size);
   const prev = ctx.imageSmoothingEnabled, prevQ = ctx.imageSmoothingQuality;
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(im, cx - size / 2, cy - size / 2, size, size);
+  // 縦横比は元画像のまま、size×size の枠に収まるように描く(中心は cx, cy)
+  const ar = icon.naturalWidth / icon.naturalHeight;
+  const dw = ar >= 1 ? size : size * ar, dh = ar >= 1 ? size / ar : size;
+  ctx.drawImage(im, cx - dw / 2, cy - dh / 2, dw, dh);
   ctx.imageSmoothingEnabled = prev; ctx.imageSmoothingQuality = prevQ;
 }
 
