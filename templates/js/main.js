@@ -68,6 +68,13 @@ function mainProc(timestamp) {
         scene = "boss_70f";
         teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
       }
+      else if (state.floor === 80 && !bossSys.isBossActive && scene === "game" && !bossSys.boss80.cleared) {
+        flushLineClearQueue(state);
+        bossSys.generateBossStage(state, 80);
+        scene = "boss_80f";
+        player.hp = BOSS80_MAX_HP;
+        teleportPlayerBoss80(player); player.invincible = INVINCIBLE_FRAMES; beam.phase = "wait"; beam.timer = 0;
+      }
 
       // ボス固有更新処理
       if (scene === "boss_20f") { bossSys.bossTimer--; if (bossSys.bossTimer <= 0) scene = "gameover"; }
@@ -161,7 +168,7 @@ document.addEventListener("keydown", e => {
     if (sym === "q" || sym === "e") tutState.flags.rotated = true;
   }
 
-  const noFallingBlock = (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f");
+  const noFallingBlock = (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f");
 
   if (scene === "boss_70f") bossSys.handleBoss70Input(sym);
 

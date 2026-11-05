@@ -20,7 +20,8 @@ function getOrdinal(n) {
 }
 
 function capFloorAtBoss(state) {
-  if (state.floor >= 70 && !bossSys.boss70.cleared) state.floor = 70;
+  if (state.floor >= 80 && !bossSys.boss80.cleared) state.floor = 80;
+  else if (state.floor >= 70 && !bossSys.boss70.cleared) state.floor = 70;
   else if (state.floor >= 60 && !bossSys.boss60Cleared) state.floor = 60;
   else if (state.floor >= 50 && !bossSys.boss50Cleared) state.floor = 50; // 【50F追加】
   else if (state.floor >= 40 && !bossSys.boss40Cleared) state.floor = 40;
@@ -408,7 +409,7 @@ function applyGravityPushOnly(state, fb) {
     return;
   }
 
-  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f") return;
   if (state.pushedBlockIds.size === 0) return;
 
   state.pushGravityTimer += 1; const interval = bossSys.getAdjustedFallInterval(state.keyStates.down ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor));
@@ -480,9 +481,12 @@ function useComboBlock(state, fb) {
 function teleportPlayer(p) { p.x = Math.floor((GAME_LEFT + GAME_RIGHT) / 2); p.y = GAME_TOP + 100; p.vy = 0; p.isGrounded = false; p.prevHalfH = P_HALF_H; }
 function teleportPlayerBoss20(p) { p.x = GAME_LEFT + 8 * GRID_SIZE; p.y = GAME_BOTTOM - P_HALF_H; p.vy = 0; p.isGrounded = false; p.prevHalfH = P_HALF_H; }
 
+function teleportPlayerBoss80(p) { [p.x, p.y] = bossSys.getBoss80SpawnPosition(); p.vy = 0; p.isGrounded = false; p.prevHalfH = P_HALF_H; }
+
 function applyPlayerDamage(p) {
   p.hp = Math.max(0, p.hp - 1); p.invincible = INVINCIBLE_FRAMES;
   if (p.hp <= 0) scene = "gameover";
+  else if (scene === "boss_80f") teleportPlayerBoss80(p);
   else if (scene === "boss_20f" || scene === "boss_40f") teleportPlayerBoss20(p);
   else teleportPlayer(p);
 }
@@ -498,7 +502,7 @@ function checkCrush(state, fb, p) {
   const fbCells = (scene === "boss_20f" || scene === "boss_40f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
   for (const cx of [lx, rx]) {
     if (cx < 0 || cx >= MAP_WIDTH) continue;
-    if (fbCells.has(`${cx},${headGy}`) || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999)) {
+    if (fbCells.has(`${cx},${headGy}`) || (headGy >= 0 && headGy < MAP_HEIGHT && state.blockMap[headGy][cx] >= 1 && state.blockMap[headGy][cx] !== 9999 && state.blockMap[headGy][cx] !== SPIKE_ID)) {
       applyPlayerDamage(p); break;
     }
   }
@@ -509,7 +513,7 @@ function checkCrushHarddrop(state, p) {
   const checkXs = [Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE), Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE)];
   const checkYs = [Math.floor((p.y - (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE), Math.floor((p.y + (P_HALF_H - 2) - GAME_TOP) / GRID_SIZE)];
   for (const cy of checkYs) for (const cx of checkXs) {
-    if (cx >= 0 && cx < MAP_WIDTH && cy >= 0 && cy < MAP_HEIGHT && state.blockMap[cy][cx] >= 1 && state.blockMap[cy][cx] !== 9999) {
+    if (cx >= 0 && cx < MAP_WIDTH && cy >= 0 && cy < MAP_HEIGHT && state.blockMap[cy][cx] >= 1 && state.blockMap[cy][cx] !== 9999 && state.blockMap[cy][cx] !== SPIKE_ID) {
       applyPlayerDamage(p); return;
     }
   }
@@ -544,7 +548,7 @@ function checkBoss20fGoal(state, p) {
 }
 
 function updateBeam(beam, player, forcedCycle = null) {
-  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_60f" || scene === "boss_70f") { beam.timer = 0; beam.phase = "wait"; return; }
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_60f" || scene === "boss_70f" || scene === "boss_80f") { beam.timer = 0; beam.phase = "wait"; return; }
   const currentCycle = forcedCycle !== null ? forcedCycle : getBeamCycle(state.floor);
   if (currentCycle === Infinity && !bossSys.isBossActive) { beam.timer = 0; beam.phase = "wait"; return; }
   let cycle = (bossSys.isBossActive && !bossSys.cursedBeamActive) ? 600 : currentCycle;
@@ -566,7 +570,7 @@ function updateBeam(beam, player, forcedCycle = null) {
 }
 
 function updateBlockMove(state, fb, bms) {
-  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f") return;
   if (bms.leftHeld === bms.rightHeld) { bms.holdFrames = 0; bms.repeatAcc = 0; return; }
   
   // 【50Fボス専用追加分】ブロック操作反転ステータスの取得・反映
@@ -586,7 +590,7 @@ function updateBlockMove(state, fb, bms) {
 }
 
 function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
-  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f") return;
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_70f" || scene === "boss_80f") return;
   const isUpward = bossSys.isBoss60UpwardActive();
   const isFast = isUpward ? !!state.keyStates.up : !!state.keyStates.down;
   let interval = isFast ? BLOCK_FALL_INTERVAL_FAST : getFallInterval(state.floor);
@@ -624,11 +628,35 @@ function updateFallingBlock(state, fb, isTutorial = false, tutState = null) {
 
 function isSolidAll(state, fb, gx, gy) {
   if (gx < 0 || gx >= MAP_WIDTH || gy < 0 || gy >= MAP_HEIGHT) return false;
-  if (state.blockMap[gy][gx] === 9999) return false;
+  if (state.blockMap[gy][gx] === 9999 || state.blockMap[gy][gx] === SPIKE_ID) return false;
   if (state.blockMap[gy][gx] >= 1) return true;
-  if (scene === "boss_20f" || scene === "boss_40f") return false;
+  if (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_80f") return false;
   for (const [fx,fy] of fb.getCells()) { if (fx === gx && fy === gy) return true; }
   return false;
+}
+
+// 80F: 足場(生成足場・初期足場)に対する上下方向の判定(本家 _resolve_boss80_platform_vertical)
+function resolveBoss80PlatformVertical(player, nextY, vy, pHalfH) {
+  const platforms = bossSys.getBoss80Platforms();
+  const pl = player.x - P_HALF_W + 2, pr = player.x + P_HALF_W - 2;
+  const curTop = player.y - pHalfH, curBottom = player.y + pHalfH;
+  const nextTop = nextY - pHalfH, nextBottom = nextY + pHalfH;
+  if (vy >= 0) {
+    let landingY = null;
+    for (const [px0, py0, px1, py1] of platforms) {
+      if (pr <= px0 || pl >= px1) continue;
+      if (curBottom <= py0 + 1 && nextBottom >= py0) { if (landingY === null || py0 < landingY) landingY = py0; }
+    }
+    if (landingY !== null) return [landingY - pHalfH, true];
+  } else {
+    let ceilingY = null;
+    for (const [px0, py0, px1, py1] of platforms) {
+      if (pr <= px0 || pl >= px1) continue;
+      if (curTop >= py1 - 1 && nextTop <= py1) { if (ceilingY === null || py1 > ceilingY) ceilingY = py1; }
+    }
+    if (ceilingY !== null) return [ceilingY + pHalfH, false];
+  }
+  return [nextY, false];
 }
 
 function updatePlayer(state, fb, player) {
@@ -672,7 +700,7 @@ function updatePlayer(state, fb, player) {
   } else {
     for (const gridY of [upperY, lowerY]) {
       if (gridY < 0 || gridY >= MAP_HEIGHT) continue;
-      if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999) {
+      if (player.vx < 0 && nextLx >= 0 && nextLx < MAP_WIDTH && state.blockMap[gridY][nextLx] >= 1 && state.blockMap[gridY][nextLx] !== 9999 && state.blockMap[gridY][nextLx] !== SPIKE_ID) {
         hittingBlock = true; let targetId = state.blockMap[gridY][nextLx];
         if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
         if (!blockCache) blockCache = state.getBlockCache();
@@ -688,7 +716,7 @@ function updatePlayer(state, fb, player) {
         } else player.vx = 0;
         break;
       }
-      if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999) {
+      if (player.vx > 0 && nextRx >= 0 && nextRx < MAP_WIDTH && state.blockMap[gridY][nextRx] >= 1 && state.blockMap[gridY][nextRx] !== 9999 && state.blockMap[gridY][nextRx] !== SPIKE_ID) {
         hittingBlock = true; let targetId = state.blockMap[gridY][nextRx];
         if (is_fixed_terrain(targetId)) { player.vx = 0; break; }
         if (!blockCache) blockCache = state.getBlockCache();
@@ -740,7 +768,13 @@ function updatePlayer(state, fb, player) {
     const isUpward = bossSys.isBoss60UpwardActive();
 
     let landed = false;
-    for (const cx of [lfootX, rfootX]) {
+    if (scene === "boss_80f") {
+      // 80F: トゲ接触で生まれる足場・初期足場だけを床として扱う(盤面の床判定は使わない)
+      const [ry, rg] = resolveBoss80PlatformVertical(player, nextY, player.vy, curPHalfH);
+      player.y = ry; landed = true;
+      if (rg) { player.isGrounded = true; player.vy = 0; }
+    }
+    for (const cx of (scene === "boss_80f" ? [] : [lfootX, rfootX])) {
       if (cx < 0 || cx >= MAP_WIDTH) continue;
       if (isUpward) {
         if (player.vy <= 0 && headGy >= 0 && headGy < MAP_HEIGHT && isSolidAll(state, fb, cx, headGy)) {
@@ -772,6 +806,17 @@ function updatePlayer(state, fb, player) {
     bossSys.isBossActive = false; bossSys.targetReached = true; scene = "game"; player.hp = MAX_HP;
     teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
     state.floor = 21; state.floorLines = 0; state.notifiedFloor = 21; flushLineClearQueue(state, false);
+  }
+
+  // 80F: トゲ接触(足場生成+ダメージ)・ゴール判定。衝突解決の直後に行う
+  if (scene === "boss_80f") {
+    const r80 = bossSys.updateBoss80Logic(state, player);
+    if (r80 === "damage") applyPlayerDamage(player);
+    else if (r80 === "victory") {
+      bossSys.isBossActive = false; scene = "game"; player.hp = MAX_HP;
+      teleportPlayer(player); player.invincible = INVINCIBLE_FRAMES; bossSys.restorePreviousMap(state);
+      state.floor = 81; state.floorLines = 0; state.notifiedFloor = 81; flushLineClearQueue(state, false);
+    }
   }
 
   if (player.invincible > 0) { player.invincible -= 1; player.blinkVisible = (Math.floor(player.invincible / 6) % 2 === 0); }

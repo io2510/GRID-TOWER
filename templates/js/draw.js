@@ -14,7 +14,7 @@ function drawNextBlock(ctx, state) {
   const blockW = (maxDx - minDx + 1) * cellSize, blockH = (maxDy - minDy + 1) * cellSize;
   const originX = mapCenterX - blockW / 2 - minDx * cellSize, originY = areaTop + 50 + (areaH - 50 - blockH) / 2 - minDy * cellSize;
 
-  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && scene !== "boss_80f") {
     for (const [dx, dy] of ndata.shape) {
       ctx.fillStyle = ndata.color; ctx.fillRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
       ctx.strokeStyle = ndata.outline; ctx.lineWidth = 1; ctx.strokeRect(originX + dx * cellSize, originY + dy * cellSize, cellSize, cellSize);
@@ -26,7 +26,7 @@ function drawNextBlock(ctx, state) {
     const placeholderTop = areaTop + areaH + 40; ctx.fillStyle = "#222233"; ctx.fillRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
     ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.strokeRect(mapLeftX, placeholderTop, mapRightX - mapLeftX, 300);
     ctx.fillStyle = "white"; ctx.font = "bold 14px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
-    const bossFileMap = { "boss_10f":"boss10.png", "boss_20f":"boss20.png", "boss_30f":"boss30.png", "boss_40f":"boss40.png", "boss_50f":"boss50.png", "boss_60f":"boss60.png", "boss_70f":"boss70.png" };
+    const bossFileMap = { "boss_10f":"boss10.png", "boss_20f":"boss20.png", "boss_30f":"boss30.png", "boss_40f":"boss40.png", "boss_50f":"boss50.png", "boss_60f":"boss60.png", "boss_70f":"boss70.png", "boss_80f":"boss80.png" };
     let bossFile = bossFileMap[scene] || "boss_default.png";
     ctx.fillText("[ BOSS STANDING IMAGE ]", mapCenterX, placeholderTop + 145); ctx.fillText(`(assets/${bossFile})`, mapCenterX, placeholderTop + 170);
   }
@@ -71,6 +71,39 @@ function drawBoss60UnderwaterBg(ctx, state) {
 }
 
 // 70F: シーソーの土台・積みブロック・アクティブブロックを描画
+// 80F: トゲ・ゴール(文字なし)・生成された足場の描画
+function drawBoss80Stage(ctx, state) {
+  if (scene !== "boss_80f") return;
+  const flash = Math.floor(Date.now() / 250) % 2 === 0;
+  for (let gy = 0; gy < MAP_HEIGHT; gy++) {
+    for (let gx = 0; gx < MAP_WIDTH; gx++) {
+      const val = state.blockMap[gy][gx];
+      if (val === 0) continue;
+      const x0 = GAME_LEFT + gx * GRID_SIZE, y0 = GAME_TOP + gy * GRID_SIZE, x1 = x0 + GRID_SIZE, y1 = y0 + GRID_SIZE;
+      if (val === SPIKE_ID) {
+        ctx.fillStyle = "#4a101b"; ctx.fillRect(x0 + 1, y0 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+        ctx.strokeStyle = "#d93d59"; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, y0 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+        ctx.fillStyle = flash ? "#ff3d5a" : "#d92848";
+        ctx.beginPath(); ctx.moveTo(x0 + 3, y1 - 3); ctx.lineTo(x0 + GRID_SIZE / 2, y0 + 5); ctx.lineTo(x1 - 3, y1 - 3); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "#ffb0bc"; ctx.lineWidth = 1; ctx.stroke();
+      } else if (val === 9999) {
+        // ゴール(本家にある "GOAL" の文字は描かない)
+        ctx.fillStyle = flash ? "#fff34d" : "#c9a900"; ctx.fillRect(x0 + 1, y0 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+        ctx.strokeStyle = "#fffbd0"; ctx.lineWidth = 2; ctx.strokeRect(x0 + 1, y0 + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+      } else if (is_fixed_terrain(val)) {
+        ctx.fillStyle = "#4b5368"; ctx.fillRect(x0, y0, GRID_SIZE, GRID_SIZE);
+        ctx.strokeStyle = "#9ba8c4"; ctx.lineWidth = 2; ctx.strokeRect(x0, y0, GRID_SIZE, GRID_SIZE);
+      }
+    }
+  }
+  const plats = bossSys.getBoss80Platforms(), hasStart = bossSys.hasBoss80StartPlatform();
+  plats.forEach(([px0, py0, px1, py1], i) => {
+    const isStart = i === 0 && hasStart;
+    ctx.fillStyle = isStart ? "#3b9d72" : "#2eaa8a"; ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+    ctx.strokeStyle = isStart ? "#b8ffcf" : "#7affdc"; ctx.lineWidth = 2; ctx.strokeRect(px0, py0, px1 - px0, py1 - py0);
+  });
+}
+
 function drawBoss70Stage(ctx, state) {
   if (scene !== "boss_70f") return;
   const targetY = (bossSys.boss70.phase === 1) ? GAME_TOP + 7 * GRID_SIZE : GAME_TOP + 5 * GRID_SIZE;
@@ -132,7 +165,7 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
   ctx.setLineDash([]);
 
   // ビーム
-  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && scene !== "boss_80f") {
     let currentCycle = getBeamCycle(state.floor); if (scene === "boss_10f") currentCycle = 1800;
     if (forceBeamActive || currentCycle !== Infinity || bossSys.isBossActive) {
       if (beam.phase === "warning" && beam.blinkOn) { ctx.fillStyle = "#550000"; ctx.fillRect(GAME_LEFT + beam.col * GRID_SIZE, GAME_TOP, BEAM_WIDTH * GRID_SIZE, GAME_BOTTOM - GAME_TOP); }
@@ -170,6 +203,7 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
   for (let y = 0; y < MAP_HEIGHT; y++) {
     for (let x = 0; x < MAP_WIDTH; x++) {
       let val = state.blockMap[y][x];
+      if (scene === "boss_80f") continue; // 80Fは drawBoss80Stage で描く
       if (val === 9999) {
         ctx.fillStyle = goalFlash ? "#ffff33" : "#cccc00"; ctx.fillRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
         ctx.strokeStyle = "#ffffbb"; ctx.lineWidth = 1; ctx.strokeRect(GAME_LEFT + x * GRID_SIZE, GAME_TOP + y * GRID_SIZE, GRID_SIZE, GRID_SIZE);
@@ -204,9 +238,10 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
   }
 
   drawBoss70Stage(ctx, state);
+  drawBoss80Stage(ctx, state);
 
   // 落下ブロック
-  if (!hideFallingBlock && scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f") {
+  if (!hideFallingBlock && scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && scene !== "boss_80f") {
     let gc = fb.getGhostCells(state);
     if (gc.length > 0) {
       let gf = darkenColor(fb.color, 0.28), go = darkenColor(fb.outline || fb.color, 0.45), fbc = new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
@@ -235,7 +270,7 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
   }
 
   // 警告
-  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && beam.phase === "warning") {
+  if (scene !== "boss_20f" && scene !== "boss_40f" && scene !== "boss_70f" && scene !== "boss_80f" && beam.phase === "warning") {
     ctx.fillStyle = "#111111"; ctx.fillRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
     ctx.strokeStyle = "#ff3333"; ctx.lineWidth = 2; ctx.strokeRect((GAME_LEFT + GAME_RIGHT) / 2 - 300, GAME_TOP + 20, 600, 90);
     ctx.fillStyle = "#ff3333"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.textAlign = "center";
@@ -307,6 +342,11 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
     ctx.fillStyle = "#aaaacc"; ctx.font = "bold 13px 'DotGothic16', sans-serif";
     let b60 = ["60F BOSS MISSION", "", "水中ステージを攻略せよ！", "", "【下向き水流】", "ブロックは上から落下", "Spaceでジャンプ", "", "【上向き水流】", "ブロックは下から浮上", "Sキーで潜り（下方向ジャンプ）", "↑で速度上昇、↓でハードドロップ", "", "【クリア条件】", "4列消去×4回（計16列）"];
     b60.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 460 + i * 20));
+  } else if (scene === "boss_80f") {
+    ctx.fillStyle = "#ff6677"; ctx.font = "bold 20px 'DotGothic16', sans-serif"; ctx.fillText("80F SPIKE MISSION", canvasX, GAME_TOP + 220);
+    ctx.fillStyle = "#8dffb0"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText(`PLATFORMS: ${bossSys.getBoss80CreatedPlatformCount()}`, canvasX, GAME_TOP + 275);
+    ctx.fillStyle = "#d9e7ff"; ctx.font = "bold 16px 'DotGothic16', sans-serif";
+    ["トゲを避けつつ", "右上のゴールへ到達せよ！", "", "被弾地点に足場が生成される", "生成された足場は安全に乗れる", "", "赤いトゲに触れるとダメージ", "左下の初期地点へリスポーン"].forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 340 + i * 26));
   } else if (scene === "boss_70f") {
     ctx.fillStyle = "#ffcc00"; ctx.font = "bold 18px 'DotGothic16', sans-serif"; ctx.fillText("70F SEESAW TASK", canvasX, GAME_TOP + 220);
     let tiltDeg = bossSys.boss70.angle * 180 / Math.PI;
@@ -332,8 +372,22 @@ function drawGame(ctx, state, fb, player, beam, hideFallingBlock = false, forceB
     ct.forEach((l, i) => ctx.fillText(l, canvasX, GAME_TOP + 240 + i * 22));
   }
 
-  const hpY = GAME_BOTTOM - 120; ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", canvasX, hpY - 40);
-  for (let i = 0; i < MAX_HP; i++) { let sx = canvasX - (MAX_HP - 1) * 25; ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+  const hpY = GAME_BOTTOM - 120;
+  if (scene === "boss_80f") {
+    // 80F: HP20 を 5個×4行で表示
+    const maxHp = BOSS80_MAX_HP, perRow = 5, rowGap = 45, rows = Math.ceil(maxHp / perRow);
+    const startY = hpY - (rows - 1) * rowGap / 2;
+    ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", canvasX, startY - 50);
+    ctx.font = "bold 38px 'DotGothic16', sans-serif";
+    for (let i = 0; i < maxHp; i++) {
+      const row = Math.floor(i / perRow), col = i % perRow, inRow = Math.min(perRow, maxHp - row * perRow);
+      const sx = canvasX - (inRow - 1) * 25;
+      ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.fillText("♥", sx + col * 50, startY + row * rowGap + 10);
+    }
+  } else {
+    ctx.fillStyle = "cyan"; ctx.font = "bold 16px 'DotGothic16', sans-serif"; ctx.fillText("PLAYER HEALTH", canvasX, hpY - 40);
+    for (let i = 0; i < MAX_HP; i++) { let sx = canvasX - (MAX_HP - 1) * 25; ctx.fillStyle = i < player.hp ? "#ff3333" : "#444444"; ctx.font = "bold 38px 'DotGothic16', sans-serif"; ctx.fillText("♥", sx + i * 50, hpY + 10); }
+  }
 
   // HUD 右側 (階層マップ)
   const mapLeftX = GAME_RIGHT + 80, mapRightX = SCREEN_WIDTH - 80, mapCenterX = Math.floor((mapLeftX + mapRightX) / 2);

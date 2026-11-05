@@ -65,6 +65,9 @@ class BossManager {
       cleared: false,
       wasGroundedOnSeesaw: false,
     };
+
+    // 80F: トゲ迷路。接触した場所に足場が生成される
+    this.boss80 = { cleared: false, platforms: [], startPlatform: null };
   }
   saveCurrentMap(blockMap) { this.savedBlockMap = blockMap.map(row => [...row]); }
   restorePreviousMap(state) { if (this.savedBlockMap) { state.blockMap = this.savedBlockMap.map(row => [...row]); } }
@@ -129,6 +132,20 @@ class BossManager {
       this.boss60PhaseCount = 0;
       this.boss60LinesInPhase = 0;
       this.boss60Cleared = false;
+    } else if (floor === 80) {
+      for (let y = 0; y < MAP_HEIGHT; y++) {
+        for (let x = 0; x < MAP_WIDTH; x++) {
+          const val = BOSS_80F_MAP[y][x];
+          if (val === 9999) state.blockMap[y][x] = 9999;
+          else if (val === 1) state.blockMap[y][x] = encode_fixed_terrain(state.nextSerial);
+          else if (val === 2) state.blockMap[y][x] = SPIKE_ID;
+        }
+      }
+      state.nextSerial += 1;
+      this.boss80.platforms = [];
+      // 最下段はトゲだらけなので、左下の初期位置から始められる安全な足場だけ別管理する
+      this.boss80.startPlatform = [GAME_LEFT, GAME_BOTTOM - GRID_SIZE * 2, GAME_LEFT + GRID_SIZE * 2, GAME_BOTTOM - GRID_SIZE * 2 + GRID_SIZE * 0.5];
+      this.boss80.cleared = false;
     } else if (floor === 70) {
       this.initBoss70Physics();
       this.boss70.phase = 1;
@@ -386,6 +403,66 @@ class BossManager {
     } else {
       if (minBTop !== null) { player.y = minBTop - pHalfH; player.vy = Math.min(player.vy || 0, 0.0); player.isGrounded = true; }
     }
+  }
+
+  // --------------------------------------------------------
+  // 80F: トゲ迷路(本家 boss_data.py の *boss80* 群と同じ)
+  // --------------------------------------------------------
+  getBoss80SpawnPosition() { return [GAME_LEFT + GRID_SIZE, GAME_BOTTOM - 2 * GRID_SIZE - P_HALF_H]; }
+  getBoss80Platforms() {
+    const list = [...this.boss80.platforms];
+    if (this.boss80.startPlatform) list.unshift(this.boss80.startPlatform);
+    return list;
+  }
+  getBoss80CreatedPlatformCount() { return this.boss80.platforms.length; }
+  hasBoss80StartPlatform() { return !!this.boss80.startPlatform; }
+
+  _addBoss80Platform(p) {
+    if (!this.boss80.platforms.some(q => q[0] === p[0] && q[1] === p[1] && q[2] === p[2] && q[3] === p[3])) this.boss80.platforms.push(p);
+  }
+  _addBoss80PlatformAboveSpike(gx, gy) {
+    let x0 = GAME_LEFT + gx * GRID_SIZE;
+    x0 = Math.max(GAME_LEFT, Math.min(GAME_RIGHT - GRID_SIZE * 2, x0));
+    const y1 = GAME_TOP + gy * GRID_SIZE;
+    this._addBoss80Platform([x0, y1 - GRID_SIZE * 0.3, x0 + GRID_SIZE * 2, y1]);
+  }
+  _addBoss80PlatformBesideSpike(gx, gy, side) {
+    const cellLeft = GAME_LEFT + gx * GRID_SIZE, cellRight = cellLeft + GRID_SIZE;
+    const y0 = GAME_TOP + gy * GRID_SIZE, y1 = y0 + GRID_SIZE;
+    let x0, x1;
+    if (side === "left") { x1 = cellLeft; x0 = x1 - GRID_SIZE * 0.3; }
+    else { x0 = cellRight; x1 = x0 + GRID_SIZE * 0.3; }
+    x0 = Math.max(GAME_LEFT, x0); x1 = Math.min(GAME_RIGHT, x1);
+    this._addBoss80Platform([x0, y0, x1, y1]);
+  }
+
+  // ゴール判定とトゲ接触時の足場生成。戻り値: "victory" / "damage" / "running"
+  updateBoss80Logic(state, player) {
+    if (this.boss80.cleared) return "victory";
+    const pHalfH = player.isCrouching ? CROUCH_P_HALF_H : P_HALF_H;
+    const pl = player.x - P_HALF_W + 2, pr = player.x + P_HALF_W - 2;
+    const pt = player.y - pHalfH, pb = player.y + pHalfH;
+    let goalHit = false; const spikes = [];
+    for (let gy = 0; gy < MAP_HEIGHT; gy++) {
+      for (let gx = 0; gx < MAP_WIDTH; gx++) {
+        const id = state.blockMap[gy][gx];
+        if (id !== 9999 && id !== SPIKE_ID) continue;
+        const cl = GAME_LEFT + gx * GRID_SIZE, ct = GAME_TOP + gy * GRID_SIZE, cr = cl + GRID_SIZE, cb = ct + GRID_SIZE;
+        if (!(pr > cl && pl < cr && pb > ct && pt < cb)) continue;
+        if (id === 9999) goalHit = true; else spikes.push([gx, gy, cl, ct, cr, cb]);
+      }
+    }
+    if (goalHit) { this.boss80.cleared = true; return "victory"; }
+    if (spikes.length && player.invincible === 0) {
+      for (const [gx, gy, cl, ct, cr, cb] of spikes) {
+        const ox = Math.min(pr, cr) - Math.max(pl, cl);
+        const oy = Math.min(pb, cb) - Math.max(pt, ct);
+        if (ox < oy) this._addBoss80PlatformBesideSpike(gx, gy, player.x < (cl + cr) / 2 ? "left" : "right");
+        else this._addBoss80PlatformAboveSpike(gx, gy);
+      }
+      return "damage";
+    }
+    return "running";
   }
 
   // 70F: シーソー物理ギミックは js/boss70.js に分離(BossManager.prototype へ追加される)
