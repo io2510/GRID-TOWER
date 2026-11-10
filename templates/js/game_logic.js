@@ -935,8 +935,7 @@ function updatePlayer(state, fb, player) {
     if (scene === "boss_80f") {
       // 80F: トゲ接触で生まれる足場・初期足場だけを床として扱う(盤面の床判定は使わない)
       const [ry, rg] = resolveBoss80PlatformVertical(player, nextY, player.vy, curPHalfH);
-      // 本家は着地しなかった場合 y = next_y で上書きするため、足場は下からすり抜けられる(天井判定は実質無効)
-      player.y = rg ? ry : nextY; landed = true;
+      player.y = ry; landed = true;
       if (rg) { player.isGrounded = true; player.vy = 0; }
     }
     for (const cx of (scene === "boss_80f" ? [] : [lfootX, rfootX])) {
