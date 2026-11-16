@@ -606,7 +606,8 @@ function checkCrush(state, fb, p) {
   const headGy = Math.floor((p.y - (P_HALF_H - GRID_SIZE / 2) - GAME_TOP) / GRID_SIZE);
   const lx = Math.floor((p.x - (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
   const rx = Math.floor((p.x + (P_HALF_W - 2) - GAME_LEFT) / GRID_SIZE);
-  const fbCells = (scene === "boss_20f" || scene === "boss_40f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
+  // 落下ブロックの無いボス(本家 NO_FALLING_BLOCK_SCENES = 20F/40F/80F)では、画面外に残った見えない駒を無視する
+  const fbCells = (scene === "boss_20f" || scene === "boss_40f" || scene === "boss_80f") ? new Set() : new Set(fb.getCells().map(([x,y]) => `${x},${y}`));
   for (const cx of [lx, rx]) {
     if (cx < 0 || cx >= MAP_WIDTH) continue;
     const inFb = fbCells.has(`${cx},${headGy}`);
